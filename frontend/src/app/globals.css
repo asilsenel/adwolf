@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* CSS Variables */
+:root {
+  --background: #FFF8DE;
+  --foreground: #1a1a2e;
+
+  --card: #FFFFFF;
+  --card-foreground: #1a1a2e;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #1a1a2e;
+
+  --primary: #8CA9FF;
+  --primary-foreground: #FFFFFF;
+  --primary-light: #AAC4F5;
+  --primary-dark: #7090E8;
+
+  --secondary: #AAC4F5;
+  --secondary-foreground: #1a1a2e;
+
+  --muted: #FFF2C6;
+  --muted-foreground: #64748b;
+
+  --accent: #AAC4F5;
+  --accent-foreground: #1a1a2e;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #FFFFFF;
+
+  --border: #AAC4F5;
+  --input: #AAC4F5;
+  --ring: #8CA9FF;
+
+  --radius: 0.75rem;
+
+  /* Semantic colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #8CA9FF;
+
+  /* Cream colors */
+  --cream: #FFF2C6;
+  --cream-light: #FFF8DE;
+}
+
+/* Base Styles */
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cream);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-light);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeIn 0.2s ease-out;
+}
