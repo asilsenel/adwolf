@@ -1,0 +1,112 @@
+# Ad Platform MVP - Docker Compose
+# Development environment configuration
+
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: adplatform-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - redis
+    networks:
+      - adplatform-network
+    restart: unless-stopped
+
+  # Redis for Celery broker
+  redis:
+    image: redis:7-alpine
+    container_name: adplatform-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - adplatform-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: adplatform-celery-worker
+    environment:
+      - DEBUG=true
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks worker --loglevel=info
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - adplatform-network
+    restart: unless-stopped
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: adplatform-celery-beat
+    environment:
+      - DEBUG=true
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    command: celery -A app.tasks beat --loglevel=info
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - adplatform-network
+    restart: unless-stopped
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: adplatform-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - adplatform-network
+    restart: unless-stopped
+
+networks:
+  adplatform-network:
+    driver: bridge
+
+volumes:
+  redis-data:
