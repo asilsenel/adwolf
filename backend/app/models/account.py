@@ -73,6 +73,21 @@ class OAuthCallbackResponse(BaseModel):
     redirect_uri: Optional[str] = None
 
 
+class LoginRequest(BaseModel):
+    """Request model for user login."""
+    email: str = Field(..., description="User email address")
+    password: str = Field(..., min_length=6, description="User password")
+
+
+class LoginResponse(BaseModel):
+    """Response model for successful login."""
+    access_token: str = Field(..., description="JWT access token for API authorization")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_in: int = Field(..., description="Token expiration time in seconds")
+    refresh_token: Optional[str] = Field(None, description="Refresh token")
+    user: dict = Field(..., description="User profile information")
+
+
 # ===========================================
 # CONNECTED ACCOUNT MODELS
 # ===========================================

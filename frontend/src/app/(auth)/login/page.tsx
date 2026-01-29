@@ -1,28 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
+    const router = useRouter();
+    const { login, isLoading, error, clearError, isAuthenticated, hydrate } = useAuthStore();
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+
+    // Hydrate on mount (restore from localStorage)
+    useEffect(() => {
+        hydrate();
+    }, [hydrate]);
+
+    // Redirect if already authenticated
+    useEffect(() => {
+        if (isAuthenticated) {
+            router.push("/dashboard");
+        }
+    }, [isAuthenticated, router]);
+
+    // Clear error when inputs change
+    useEffect(() => {
+        if (error) {
+            clearError();
+        }
+    }, [email, password]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
 
-        // TODO: Implement Supabase auth
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const success = await login(email, password);
 
-        // Redirect to dashboard
-        window.location.href = "/dashboard";
+        if (success) {
+            router.push("/dashboard");
+        }
     };
 
     return (
@@ -40,6 +62,14 @@ export default function LoginPage() {
             </CardHeader>
             <form onSubmit={handleSubmit}>
                 <CardContent className="space-y-4">
+                    {/* Error Message */}
+                    {error && (
+                        <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+                            <AlertCircle size={16} />
+                            <span>{error}</span>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <Input
@@ -49,6 +79,7 @@ export default function LoginPage() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            disabled={isLoading}
                         />
                     </div>
                     <div className="space-y-2">
@@ -69,6 +100,7 @@ export default function LoginPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
+                                disabled={isLoading}
                             />
                             <button
                                 type="button"

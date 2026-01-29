@@ -1,14 +1,11 @@
 """
 Ad Platform MVP - Application Settings
-
 Centralized configuration using Pydantic Settings.
-All environment variables are loaded and validated here.
 """
 
 from functools import lru_cache
-from typing import Optional
-
-from pydantic import field_validator
+from typing import List, Optional, Union
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,7 +26,9 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
     log_level: str = "INFO"
-    default_timezone: str = "Europe/Istanbul"
+    
+    # API Prefix
+    api_v1_str: str = "/api/v1"
 
     # ===========================================
     # SUPABASE
@@ -38,91 +37,72 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
 
     # ===========================================
-    # GOOGLE ADS
+    # SECURITY
     # ===========================================
-    google_ads_client_id: str
-    google_ads_client_secret: str
-    google_ads_developer_token: str
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 8  # 8 gün
+    encryption_key: str  # 64 hex characters
+
+    # ===========================================
+    # GOOGLE ADS (Opsiyonel - Çökmemesi için)
+    # ===========================================
+    google_ads_client_id: Optional[str] = None
+    google_ads_client_secret: Optional[str] = None
+    google_ads_developer_token: Optional[str] = None
     google_ads_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
 
     # ===========================================
-    # META ADS
+    # META ADS (Opsiyonel)
     # ===========================================
-    meta_app_id: str
-    meta_app_secret: str
+    meta_app_id: Optional[str] = None
+    meta_app_secret: Optional[str] = None
     meta_redirect_uri: str = "http://localhost:8000/api/v1/auth/meta/callback"
-
-    # ===========================================
-    # OPENAI
-    # ===========================================
-    openai_api_key: str
-    openai_model: str = "gpt-4o"
 
     # ===========================================
     # REDIS
     # ===========================================
     redis_url: str = "redis://redis:6379/0"
-
-    # ===========================================
-    # SECURITY
-    # ===========================================
-    jwt_secret_key: str
-    jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60
-    encryption_key: str  # 64 hex characters for AES-256
-
+    
     # ===========================================
     # CORS
     # ===========================================
-    frontend_url: str = "http://localhost:3000"
+    backend_cors_origins: List[AnyHttpUrl] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+    ]
 
-    # ===========================================
-    # RATE LIMITING
-    # ===========================================
-    rate_limit_requests: int = 100
-    rate_limit_window: int = 60  # seconds
+    # --- VALIDATORS ---
+
+    @field_validator("backend_cors_origins", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, (list, str)):
+            return v
+        raise ValueError(v)
 
     @field_validator("encryption_key")
     @classmethod
     def validate_encryption_key(cls, v: str) -> str:
-        """Validate that encryption key is proper length for AES-256."""
         if len(v) != 64:
-            raise ValueError(
-                "ENCRYPTION_KEY must be 64 hex characters (32 bytes for AES-256)"
-            )
-        try:
-            bytes.fromhex(v)
-        except ValueError:
-            raise ValueError("ENCRYPTION_KEY must be valid hexadecimal")
+            raise ValueError("ENCRYPTION_KEY must be 64 hex characters")
         return v
 
     @property
     def encryption_key_bytes(self) -> bytes:
-        """Get encryption key as bytes."""
         return bytes.fromhex(self.encryption_key)
 
     @property
     def cors_origins(self) -> list[str]:
-        """Get list of allowed CORS origins."""
-        origins = [self.frontend_url]
-        if self.debug:
-            origins.extend([
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:3000",
-            ])
-        return origins
+        """Return CORS origins as list of strings for FastAPI middleware."""
+        return [str(origin) for origin in self.backend_cors_origins]
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Get cached settings instance.
-    
-    Uses lru_cache for performance - settings are loaded once and reused.
-    """
     return Settings()
 
 
-# Convenience export
 settings = get_settings()

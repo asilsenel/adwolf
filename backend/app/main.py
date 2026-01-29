@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
 from app.api.v1 import router as v1_router
@@ -52,6 +53,13 @@ app = FastAPI(
     * **Unified Dashboard** - Tüm platformları tek ekranda gör
     * **AI Insights** - GPT-4 ile otomatik analiz ve öneriler
     * **Günlük Özet** - Email/WhatsApp ile daily digest al
+    
+    ## Authentication
+    
+    1. POST `/api/v1/auth/login` ile email/password gönderin
+    2. Dönen `access_token`'ı kopyalayın
+    3. Sağ üstteki "Authorize" butonuna tıklayın
+    4. Token'ı `Bearer <token>` formatında girin
     """,
     version=settings.app_version,
     docs_url="/docs" if settings.debug else None,
@@ -60,10 +68,54 @@ app = FastAPI(
 )
 
 
-# CORS Middleware
+# Custom OpenAPI schema with security
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=settings.app_name,
+        version=settings.app_version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "POST /api/v1/auth/login ile aldığınız access_token'ı girin",
+        }
+    }
+    
+    # Apply security globally (optional - endpoints can override)
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
+# CORS Middleware - Convert AnyHttpUrl to strings and strip trailing slashes
+cors_origins = [str(origin).rstrip("/") for origin in settings.backend_cors_origins]
+# Add localhost variants for development
+if settings.debug:
+    cors_origins.extend([
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ])
+    # Remove duplicates
+    cors_origins = list(set(cors_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

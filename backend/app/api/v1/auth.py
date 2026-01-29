@@ -23,10 +23,67 @@ from app.models.account import (
     OAuthInitiateRequest,
     OAuthInitiateResponse,
     OAuthCallbackResponse,
+    LoginRequest,
+    LoginResponse,
 )
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+# ===========================================
+# USER LOGIN
+# ===========================================
+
+@router.post("/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """
+    Authenticate user with email and password.
+    
+    Uses Supabase Auth. Returns JWT access token for API authorization.
+    Use the returned access_token in the 'Authorize' button in Swagger UI.
+    """
+    supabase = get_supabase_service()
+    
+    try:
+        # Authenticate with Supabase Auth
+        auth_response = supabase.client.auth.sign_in_with_password({
+            "email": request.email,
+            "password": request.password,
+        })
+        
+        session = auth_response.session
+        user = auth_response.user
+        
+        if not session or not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Geçersiz email veya şifre",
+            )
+        
+        return LoginResponse(
+            access_token=session.access_token,
+            token_type="bearer",
+            expires_in=session.expires_in or 3600,
+            refresh_token=session.refresh_token,
+            user={
+                "id": user.id,
+                "email": user.email,
+                "created_at": user.created_at,
+            },
+        )
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "Invalid login credentials" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Geçersiz email veya şifre",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Giriş başarısız: {error_msg}",
+        )
 
 
 # ===========================================
