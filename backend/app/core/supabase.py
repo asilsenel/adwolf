@@ -54,40 +54,40 @@ class SupabaseService:
         result = self._client.table("organizations") \
             .select("*") \
             .eq("id", org_id) \
-            .single() \
+            .limit(1) \
             .execute()
-        return result.data
+        return result.data[0] if result.data else None
 
     async def get_organization_by_slug(self, slug: str) -> Optional[dict]:
         """Get organization by slug."""
         result = self._client.table("organizations") \
             .select("*") \
             .eq("slug", slug) \
-            .single() \
+            .limit(1) \
             .execute()
-        return result.data
+        return result.data[0] if result.data else None
 
     # ===========================================
     # USER OPERATIONS
     # ===========================================
 
     async def get_user(self, user_id: str) -> Optional[dict]:
-        """Get user by ID."""
+        """Get user by ID. Returns None if not found (no PGRST116 error)."""
         result = self._client.table("users") \
             .select("*, organizations(*)") \
             .eq("id", user_id) \
-            .single() \
+            .limit(1) \
             .execute()
-        return result.data
+        return result.data[0] if result.data else None
 
     async def get_user_by_email(self, email: str) -> Optional[dict]:
-        """Get user by email."""
+        """Get user by email. Returns None if not found."""
         result = self._client.table("users") \
             .select("*, organizations(*)") \
             .eq("email", email) \
-            .single() \
+            .limit(1) \
             .execute()
-        return result.data
+        return result.data[0] if result.data else None
 
     async def update_user_last_seen(self, user_id: str) -> None:
         """Update user's last_seen_at timestamp."""
@@ -119,13 +119,13 @@ class SupabaseService:
         return result.data
 
     async def get_connected_account(self, account_id: str) -> Optional[dict]:
-        """Get a specific connected account."""
+        """Get a specific connected account. Returns None if not found."""
         result = self._client.table("connected_accounts") \
             .select("*") \
             .eq("id", account_id) \
-            .single() \
+            .limit(1) \
             .execute()
-        return result.data
+        return result.data[0] if result.data else None
 
     async def create_connected_account(self, data: dict) -> dict:
         """Create a new connected account."""

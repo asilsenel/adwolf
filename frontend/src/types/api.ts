@@ -25,3 +25,22 @@ export interface ApiError {
     detail: string;
     code?: string;
 }
+
+export interface Account {
+    id: string;
+    org_id: string;
+    platform: 'google_ads' | 'meta_ads';
+    platform_account_id: string;
+    platform_account_name: string | null;
+    status: 'active' | 'paused' | 'disconnected' | 'error';
+    last_sync_at: string | null;
+    last_sync_status: 'pending' | 'running' | 'completed' | 'failed' | null;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AccountsListResponse {
+    accounts: Account[];
+    total: number;
+}

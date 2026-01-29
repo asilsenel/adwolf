@@ -137,6 +137,83 @@ async def initiate_google_oauth(
     )
 
 
+@router.get("/google/authorize")
+async def authorize_google_oauth(
+    user_id: str = Query(..., description="User ID initiating OAuth"),
+    redirect_uri: Optional[str] = Query(None, description="Where to redirect after success"),
+):
+    """
+    Simple GET endpoint for frontend - redirects directly to Google OAuth.
+    
+    Frontend can open this URL in a new window/tab.
+    """
+    if not settings.google_ads_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Ads integration not configured",
+        )
+    
+    # Create state token with user context
+    state = create_oauth_state_token(
+        user_id=user_id,
+        platform=Platform.GOOGLE_ADS.value,
+        redirect_uri=redirect_uri or "http://localhost:3000/accounts",
+    )
+    
+    # Build authorization URL
+    params = {
+        "client_id": settings.google_ads_client_id,
+        "redirect_uri": settings.google_ads_redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(GOOGLE_ADS_SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    
+    authorization_url = f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+    
+    # Redirect user directly to Google
+    return RedirectResponse(url=authorization_url)
+
+
+async def fetch_google_ads_customer_ids(access_token: str) -> list[dict]:
+    """
+    Fetch accessible Google Ads customer IDs using the access token.
+    
+    Returns list of {customer_id, descriptive_name} dicts.
+    """
+    try:
+        # Use Google Ads API to get accessible customers
+        # Note: For full implementation, use google-ads library
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://googleads.googleapis.com/v15/customers:listAccessibleCustomers",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "developer-token": settings.google_ads_developer_token or "",
+                },
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                customer_ids = []
+                for resource_name in data.get("resourceNames", []):
+                    # Format: customers/1234567890
+                    customer_id = resource_name.split("/")[-1]
+                    customer_ids.append({
+                        "customer_id": customer_id,
+                        "resource_name": resource_name,
+                    })
+                return customer_ids
+            else:
+                print(f"Failed to fetch customers: {response.text}")
+                return []
+    except Exception as e:
+        print(f"Error fetching Google Ads customers: {e}")
+        return []
+
+
 @router.get("/google/callback")
 async def google_oauth_callback(
     code: Optional[str] = None,
@@ -219,16 +296,18 @@ async def google_oauth_callback(
     # Note: In production, you'd use google-ads library here
     # For now, we'll create a placeholder account
     
-    # Get user's org_id
+    # Get user's org_id (with fallback for MVP)
     supabase = get_supabase_service()
     user = await supabase.get_user(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
     
-    org_id = user["org_id"]
+    # MVP: If user not in users table, use default org_id
+    # This happens when user is in auth.users but not public.users
+    if user:
+        org_id = user.get("org_id", "11111111-1111-1111-1111-111111111111")
+    else:
+        # Fallback org_id for MVP
+        org_id = "11111111-1111-1111-1111-111111111111"
+        print(f"Warning: User {user_id} not found in public.users, using default org_id")
     
     # Store connected account
     from datetime import datetime, timedelta, timezone

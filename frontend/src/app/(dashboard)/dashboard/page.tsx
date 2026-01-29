@@ -1,19 +1,28 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { SpendChart } from "@/components/dashboard/spend-chart";
 import { PlatformSummary } from "@/components/dashboard/platform-summary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConnectGoogleAds } from "@/components/integrations/ConnectGoogleAds";
+import { AccountCard } from "@/components/integrations/AccountCard";
+import { api } from "@/services/api";
+import { Account, AccountsListResponse } from "@/types/api";
+import { useAuthStore } from "@/store/authStore";
 import {
     DollarSign,
     MousePointer,
     Eye,
     TrendingUp,
     AlertCircle,
-    Sparkles
+    Sparkles,
+    Loader2,
+    Plus
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // Mock data - will be replaced with API calls
 const mockMetrics = {
@@ -64,6 +73,81 @@ const mockInsights = [
 ];
 
 export default function DashboardPage() {
+    const { hydrate, isAuthenticated } = useAuthStore();
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [showAddAccount, setShowAddAccount] = useState(false);
+
+    // Hydrate auth state on mount
+    useEffect(() => {
+        hydrate();
+    }, [hydrate]);
+
+    // Fetch accounts when authenticated
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            try {
+                setIsLoading(true);
+                const response = await api.get<AccountsListResponse>("/api/v1/accounts");
+                setAccounts(response.data.accounts || []);
+            } catch (error) {
+                console.error("Failed to fetch accounts:", error);
+                // If it's an array response (not wrapped in AccountsListResponse)
+                try {
+                    const response = await api.get<Account[]>("/api/v1/accounts");
+                    if (Array.isArray(response.data)) {
+                        setAccounts(response.data);
+                    }
+                } catch {
+                    setAccounts([]);
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (isAuthenticated) {
+            fetchAccounts();
+        } else {
+            setIsLoading(false);
+        }
+    }, [isAuthenticated]);
+
+    const handleSync = async (accountId: string) => {
+        try {
+            await api.post(`/api/v1/accounts/${accountId}/sync`);
+            // Refresh accounts list
+            const response = await api.get<AccountsListResponse>("/api/v1/accounts");
+            setAccounts(response.data.accounts || []);
+        } catch (error) {
+            console.error("Sync failed:", error);
+        }
+    };
+
+    // Loading state
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center">
+                <Loader2 className="animate-spin text-primary" size={40} />
+            </div>
+        );
+    }
+
+    // No accounts - show connect CTA
+    if (accounts.length === 0 && !showAddAccount) {
+        return (
+            <div className="flex-1">
+                <Header
+                    title="Dashboard"
+                    subtitle="Reklam performansınıza genel bakış"
+                />
+                <div className="p-6 flex items-center justify-center min-h-[60vh]">
+                    <ConnectGoogleAds variant="large" />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex-1">
             <Header
@@ -74,6 +158,32 @@ export default function DashboardPage() {
             />
 
             <div className="p-6 space-y-6">
+                {/* Connected Accounts Section */}
+                <Card className="bg-white border-primary-light">
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-lg">Bağlı Hesaplar</CardTitle>
+                        <ConnectGoogleAds variant="small" />
+                    </CardHeader>
+                    <CardContent>
+                        {accounts.length > 0 ? (
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {accounts.map((account) => (
+                                    <AccountCard
+                                        key={account.id}
+                                        account={account}
+                                        onSync={handleSync}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <p>Henüz bağlı hesap yok</p>
+                                <p className="text-sm">Yukarıdaki butonu kullanarak hesap bağlayın</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
                 {/* Metric Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <MetricCard
@@ -132,10 +242,10 @@ export default function DashboardPage() {
                                 <div
                                     key={insight.id}
                                     className={`p-4 rounded-lg border-l-4 ${insight.priority === "high"
-                                            ? "border-l-warning bg-warning/5"
-                                            : insight.priority === "medium"
-                                                ? "border-l-primary bg-primary/5"
-                                                : "border-l-muted-foreground bg-muted/30"
+                                        ? "border-l-warning bg-warning/5"
+                                        : insight.priority === "medium"
+                                            ? "border-l-primary bg-primary/5"
+                                            : "border-l-muted-foreground bg-muted/30"
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-4">
