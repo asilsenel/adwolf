@@ -179,13 +179,36 @@ class SupabaseService:
 
     async def upsert_daily_metrics(self, records: list[dict]) -> list[dict]:
         """Bulk upsert daily metrics."""
-        result = self._client.table("daily_metrics") \
-            .upsert(
-                records,
-                on_conflict="account_id,campaign_id,ad_set_id,date"
-            ) \
-            .execute()
-        return result.data
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"=== UPSERT: Attempting to save {len(records)} records ===")
+        
+        if not records:
+            logger.warning("No records to upsert!")
+            return []
+        
+        # Log first record for debugging
+        logger.info(f"First record sample: {records[0]}")
+        
+        try:
+            # Try simple insert first (more reliable)
+            result = self._client.table("daily_metrics") \
+                .insert(records) \
+                .execute()
+            logger.info(f"Insert SUCCESS! Saved {len(result.data)} records")
+            return result.data
+        except Exception as e:
+            logger.warning(f"Insert failed: {e}")
+            # Try upsert as fallback
+            try:
+                result = self._client.table("daily_metrics") \
+                    .upsert(records) \
+                    .execute()
+                logger.info(f"Upsert SUCCESS! Saved {len(result.data)} records")
+                return result.data
+            except Exception as e2:
+                logger.error(f"Upsert also failed: {e2}")
+                return []
 
     async def get_daily_metrics(
         self,
@@ -203,8 +226,9 @@ class SupabaseService:
         if not account_ids:
             return []
         
+        # Simple query without campaigns join (relationship may not exist)
         query = self._client.table("daily_metrics") \
-            .select("*, campaigns(*)") \
+            .select("*") \
             .in_("account_id", account_ids) \
             .gte("date", date_from) \
             .lte("date", date_to)

@@ -324,6 +324,7 @@ async def google_oauth_callback(
             datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         ).isoformat(),
         "status": "active",
+        "is_active": True,  # Required for RLS policy
     }
     
     try:

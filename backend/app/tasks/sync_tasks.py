@@ -97,18 +97,37 @@ async def _sync_account_metrics_async(
         records_synced = 0
         
         if platform == "google_ads":
-            # TODO: Use GoogleAdsConnector
-            logger.info(f"Would sync Google Ads for account {account['id']}")
-            # connector = GoogleAdsConnector(access_token, refresh_token, account["platform_account_id"])
-            # metrics = await connector.get_metrics(sync_date_from, sync_date_to)
-            # records_synced = await _save_metrics(supabase, account["id"], metrics)
+            from app.connectors.google_ads import GoogleAdsConnector
+            
+            logger.info(f"Syncing Google Ads for account {account['id']}")
+            
+            # Check if this is a client account under an MCC
+            platform_metadata = account.get("platform_metadata") or {}
+            mcc_id = platform_metadata.get("mcc_id")
+            
+            connector = GoogleAdsConnector(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                customer_id=account["platform_account_id"],
+                login_customer_id=mcc_id,  # Use MCC for authentication if available
+            )
+            
+            # Fetch campaign-level metrics
+            metrics = await connector.get_metrics(
+                date_from=sync_date_from,
+                date_to=sync_date_to,
+                level="campaign",
+            )
+            
+            if metrics:
+                records_synced = await _save_metrics(supabase, account["id"], metrics)
+                logger.info(f"Saved {records_synced} metric records for account {account['id']}")
+            else:
+                logger.warning(f"No metrics returned for account {account['id']}")
             
         elif platform == "meta_ads":
-            # TODO: Use MetaAdsConnector
-            logger.info(f"Would sync Meta Ads for account {account['id']}")
-            # connector = MetaAdsConnector(access_token, account["platform_account_id"])
-            # metrics = await connector.get_metrics(sync_date_from, sync_date_to)
-            # records_synced = await _save_metrics(supabase, account["id"], metrics)
+            # TODO: Implement Meta Ads connector
+            logger.info(f"Meta Ads sync not yet implemented for account {account['id']}")
         
         else:
             logger.warning(f"Unknown platform: {platform}")
@@ -196,7 +215,7 @@ async def _save_metrics(
     Args:
         supabase: Supabase service
         account_id: Connected account ID
-        metrics: List of normalized metric records
+        metrics: List of normalized metric records from connector
         
     Returns:
         Number of records saved
@@ -204,10 +223,27 @@ async def _save_metrics(
     if not metrics:
         return 0
     
-    # Add account_id to each record
+    # Format records for Supabase's actual schema
+    # Converts from connector format (micros) to database format (decimals)
+    records = []
     for m in metrics:
-        m["account_id"] = account_id
+        records.append({
+            'account_id': account_id,
+            'date': m['date'],
+            'platform': m.get('platform', 'google_ads'),
+            'entity_type': 'campaign',
+            'entity_id': m.get('campaign_id'),
+            'entity_name': m.get('campaign_name'),
+            'impressions': m['impressions'],
+            'clicks': m['clicks'],
+            'spend': m['spend_micros'] / 1_000_000,  # Convert from micros
+            'conversions': float(m['conversions']),
+            'conversion_value': m['conversion_value_micros'] / 1_000_000,
+            'currency': m['currency'],
+            # Note: ctr, cpc, cpm, roas, cpa are generated columns in Supabase
+        })
     
     # Upsert metrics
-    result = await supabase.upsert_daily_metrics(metrics)
+    result = await supabase.upsert_daily_metrics(records)
     return len(result)
+

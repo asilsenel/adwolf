@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
     log_level: str = "INFO"
+    default_timezone: str = "Europe/Istanbul"
     
     # API Prefix
     api_v1_str: str = "/api/v1"
