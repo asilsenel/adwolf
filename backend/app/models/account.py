@@ -116,6 +116,7 @@ class ConnectedAccountResponse(BaseModel):
     platform: Platform
     platform_account_id: str
     platform_account_name: Optional[str] = None
+    account_name: Optional[str] = None
     status: AccountStatus
     last_sync_at: Optional[datetime] = None
     last_sync_status: Optional[SyncStatus] = None
