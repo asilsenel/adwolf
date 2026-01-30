@@ -42,7 +42,7 @@ export function AccountCard({ account, onSync }: AccountCardProps) {
                         <PlatformIcon platform={account.platform} size={40} />
                         <div>
                             <h3 className="font-semibold">
-                                {account.platform_account_name || account.platform_account_id}
+                                {account.account_name || account.platform_account_name || account.platform_account_id}
                             </h3>
                             <p className="text-sm text-muted-foreground">
                                 {getPlatformLabel(account.platform)} • {account.platform_account_id}

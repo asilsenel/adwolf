@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConnectGoogleAds } from "@/components/integrations/ConnectGoogleAds";
 import { AccountCard } from "@/components/integrations/AccountCard";
+import { AddAccountById } from "@/components/integrations/AddAccountById";
+import { AccountSelector } from "@/components/dashboard/AccountSelector";
 import { api } from "@/services/api";
 import { Account, AccountsListResponse } from "@/types/api";
 import { useAuthStore } from "@/store/authStore";
@@ -21,8 +23,18 @@ import {
     Sparkles,
     Loader2,
     RefreshCw,
+    Calendar,
+    Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+// Date range options
+const DATE_RANGES = [
+    { label: "Son 7 Gün", value: 7 },
+    { label: "Son 14 Gün", value: 14 },
+    { label: "Son 30 Gün", value: 30 },
+    { label: "Son 90 Gün", value: 90 },
+];
 
 // Types for real API data
 interface MetricsSummary {
@@ -79,24 +91,33 @@ export default function DashboardPage() {
     const [platformData, setPlatformData] = useState<PlatformMetric[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [dateRange, setDateRange] = useState(30); // Default to 30 days
+    const [selectedAccountId, setSelectedAccountId] = useState<string>("all"); // "all" or account ID
 
     // Hydrate auth state on mount
     useEffect(() => {
         hydrate();
     }, [hydrate]);
 
-    // Fetch all data when authenticated
+    // Fetch all data when authenticated or date range changes
     useEffect(() => {
         if (isAuthenticated) {
             fetchAllData();
         } else {
             setIsLoading(false);
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, dateRange, selectedAccountId]);
 
     const fetchAllData = async () => {
         try {
             setIsLoading(true);
+
+            // Calculate date range
+            const today = new Date();
+            const dateFrom = new Date(today);
+            dateFrom.setDate(dateFrom.getDate() - dateRange);
+            const dateFromStr = dateFrom.toISOString().split('T')[0];
+            const dateToStr = today.toISOString().split('T')[0];
 
             // Fetch accounts
             try {
@@ -111,27 +132,39 @@ export default function DashboardPage() {
                 setAccounts([]);
             }
 
-            // Fetch metrics summary
+            // Fetch metrics summary (with optional account filter)
             try {
-                const metricsRes = await api.get<MetricsSummary>("/api/v1/metrics/summary");
+                let metricsUrl = `/api/v1/metrics/summary?date_from=${dateFromStr}&date_to=${dateToStr}`;
+                if (selectedAccountId !== "all") {
+                    metricsUrl += `&account_id=${selectedAccountId}`;
+                }
+                const metricsRes = await api.get<MetricsSummary>(metricsUrl);
                 setMetrics(metricsRes.data);
             } catch (err) {
                 console.log("No metrics:", err);
                 setMetrics(null);
             }
 
-            // Fetch daily metrics for chart
+            // Fetch daily metrics for chart (with optional account filter)
             try {
-                const dailyRes = await api.get<MetricsTrend>("/api/v1/metrics/daily");
+                let dailyUrl = `/api/v1/metrics/daily?date_from=${dateFromStr}&date_to=${dateToStr}`;
+                if (selectedAccountId !== "all") {
+                    dailyUrl += `&account_id=${selectedAccountId}`;
+                }
+                const dailyRes = await api.get<MetricsTrend>(dailyUrl);
                 setDailyData(dailyRes.data.data || []);
             } catch (err) {
                 console.log("No daily metrics:", err);
                 setDailyData([]);
             }
 
-            // Fetch platform breakdown
+            // Fetch platform breakdown (with optional account filter)
             try {
-                const platformRes = await api.get<MetricsByPlatform>("/api/v1/metrics/by-platform");
+                let platformUrl = `/api/v1/metrics/by-platform?date_from=${dateFromStr}&date_to=${dateToStr}`;
+                if (selectedAccountId !== "all") {
+                    platformUrl += `&account_id=${selectedAccountId}`;
+                }
+                const platformRes = await api.get<MetricsByPlatform>(platformUrl);
                 setPlatformData(platformRes.data.platforms || []);
             } catch (err) {
                 console.log("No platform metrics:", err);
@@ -225,6 +258,7 @@ export default function DashboardPage() {
                                 <RefreshCw size={14} className={isRefreshing ? "animate-spin mr-1" : "mr-1"} />
                                 Yenile
                             </Button>
+                            <AddAccountById onSuccess={handleRefresh} />
                             <ConnectGoogleAds variant="small" />
                         </div>
                     </CardHeader>
@@ -244,6 +278,36 @@ export default function DashboardPage() {
                 {/* Metrics Section - Only show if we have real data */}
                 {hasMetrics ? (
                     <>
+                        {/* Date Range Selector */}
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-foreground">Performans Metrikleri</h2>
+                            <div className="flex items-center gap-4">
+                                {/* Account Filter */}
+                                {accounts.length > 1 && (
+                                    <AccountSelector
+                                        accounts={accounts}
+                                        selectedAccountId={selectedAccountId}
+                                        onSelect={setSelectedAccountId}
+                                    />
+                                )}
+                                {/* Date Range Filter */}
+                                <div className="flex items-center gap-2">
+                                    <Calendar size={16} className="text-muted-foreground" />
+                                    <select
+                                        value={dateRange}
+                                        onChange={(e) => setDateRange(Number(e.target.value))}
+                                        className="bg-white border border-primary-light rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        {DATE_RANGES.map((range) => (
+                                            <option key={range.value} value={range.value}>
+                                                {range.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Metric Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <MetricCard

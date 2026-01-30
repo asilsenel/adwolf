@@ -181,30 +181,22 @@ class SupabaseService:
         """Bulk upsert daily metrics."""
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"=== UPSERT: Attempting to save {len(records)} records ===")
         
         if not records:
-            logger.warning("No records to upsert!")
             return []
         
-        # Log first record for debugging
-        logger.info(f"First record sample: {records[0]}")
-        
+        # Try simple insert first
         try:
-            # Try simple insert first (more reliable)
-            result = self._client.table("daily_metrics") \
-                .insert(records) \
-                .execute()
-            logger.info(f"Insert SUCCESS! Saved {len(result.data)} records")
+            result = self._client.table("daily_metrics").insert(records).execute()
+            logger.info(f"Inserted {len(result.data)} daily metrics")
             return result.data
         except Exception as e:
-            logger.warning(f"Insert failed: {e}")
-            # Try upsert as fallback
+            logger.warning(f"Insert failed, trying upsert: {e}")
+            
+            # Fallback to upsert
             try:
-                result = self._client.table("daily_metrics") \
-                    .upsert(records) \
-                    .execute()
-                logger.info(f"Upsert SUCCESS! Saved {len(result.data)} records")
+                result = self._client.table("daily_metrics").upsert(records).execute()
+                logger.info(f"Upserted {len(result.data)} daily metrics")
                 return result.data
             except Exception as e2:
                 logger.error(f"Upsert also failed: {e2}")

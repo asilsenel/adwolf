@@ -110,6 +110,44 @@ class GoogleAdsConnector(BaseConnector):
         # Return existing tokens - they'll be refreshed on next API call
         return self.access_token, self.refresh_token, 3600
 
+    async def get_account_info(self) -> dict:
+        """Get account name and details from Google Ads."""
+        try:
+            client = self._get_client()
+            ga_service = client.get_service("GoogleAdsService")
+            
+            query = """
+                SELECT 
+                    customer.id,
+                    customer.descriptive_name,
+                    customer.currency_code,
+                    customer.time_zone
+                FROM customer
+                LIMIT 1
+            """
+            
+            response = ga_service.search(
+                customer_id=self.customer_id,
+                query=query,
+            )
+            
+            for row in response:
+                return {
+                    "id": str(row.customer.id),
+                    "name": row.customer.descriptive_name,
+                    "currency": row.customer.currency_code,
+                    "timezone": row.customer.time_zone,
+                }
+            
+            return {"id": self.customer_id, "name": f"Google Ads - {self.customer_id}"}
+            
+        except GoogleAdsException as ex:
+            logger.error(f"Failed to get account info: {ex.failure.errors}")
+            return {"id": self.customer_id, "name": f"Google Ads - {self.customer_id}"}
+        except Exception as e:
+            logger.error(f"Error getting account info: {e}")
+            return {"id": self.customer_id, "name": f"Google Ads - {self.customer_id}"}
+
     async def get_ad_accounts(self) -> list[dict]:
         """Get accessible Google Ads accounts."""
         try:

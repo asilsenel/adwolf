@@ -265,3 +265,154 @@ async def get_sync_status(
         "has_sync": True,
         "job": latest_job,
     }
+
+
+from pydantic import BaseModel, field_validator
+import re
+
+
+class AddAccountByIdRequest(BaseModel):
+    """Request to add a Google Ads account by ID."""
+    account_id: str
+    account_name: Optional[str] = None
+    
+    @field_validator("account_id")
+    @classmethod
+    def normalize_account_id(cls, v: str) -> str:
+        """Remove dashes and validate numeric format."""
+        # Remove dashes (e.g., 813-075-0937 -> 8130750937)
+        normalized = re.sub(r"[-\s]", "", v)
+        # Validate it's numeric
+        if not normalized.isdigit():
+            raise ValueError("Account ID must be numeric")
+        if len(normalized) < 8 or len(normalized) > 12:
+            raise ValueError("Account ID must be 8-12 digits")
+        return normalized
+
+
+class AddAccountByIdResponse(BaseModel):
+    """Response after adding account by ID."""
+    success: bool
+    account_id: str
+    message: str
+    account: Optional[ConnectedAccountResponse] = None
+
+
+@router.post("/add-by-id", response_model=AddAccountByIdResponse)
+async def add_account_by_id(
+    request: AddAccountByIdRequest,
+    current_user: CurrentUser,
+    supabase: Supabase,
+):
+    """
+    Add a Google Ads account by entering its ID.
+    
+    Requires an existing connected account to copy tokens from.
+    Supports both formats: 8130750937 or 813-075-0937
+    """
+    org_id = current_user["org_id"]
+    user_id = current_user["id"]
+    
+    # Check if account already exists in this org
+    existing = await supabase.get_connected_accounts(org_id=org_id)
+    for acc in existing:
+        if acc["platform_account_id"] == request.account_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Bu hesap zaten bağlı: {request.account_id}",
+            )
+    
+    # Find an existing Google Ads account to copy tokens from
+    source_account = None
+    for acc in existing:
+        if acc["platform"] == "google_ads" and acc.get("access_token_encrypted"):
+            source_account = acc
+            break
+    
+    if not source_account:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Önce OAuth ile bir Google Ads hesabı bağlamanız gerekiyor",
+        )
+    
+    # Validate the account exists in Google Ads
+    try:
+        from app.connectors.google_ads import GoogleAdsConnector
+        from app.core.security import decrypt_token
+        
+        access_token = decrypt_token(source_account["access_token_encrypted"])
+        refresh_token = None
+        if source_account.get("refresh_token_encrypted"):
+            refresh_token = decrypt_token(source_account["refresh_token_encrypted"])
+        
+        mcc_id = source_account.get("platform_metadata", {}).get("mcc_id")
+        
+        connector = GoogleAdsConnector(
+            customer_id=request.account_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            login_customer_id=mcc_id,
+        )
+        
+        # Validate the account
+        is_valid = await connector.validate_connection()
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hesap doğrulanamadı: {request.account_id}. Bu hesabın MCC altında olduğundan emin olun.",
+            )
+        
+        # Get account name from Google Ads
+        account_info = await connector.get_account_info()
+        account_name = request.account_name or account_info.get("name", f"Google Ads - {request.account_id}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Hesap doğrulama hatası: {str(e)}",
+        )
+    
+    # Create the new connected account
+    import uuid
+    new_account_id = str(uuid.uuid4())
+    
+    account_data = {
+        "id": new_account_id,
+        "org_id": org_id,
+        "platform": "google_ads",
+        "platform_account_id": request.account_id,
+        "account_name": account_name,
+        "platform_account_name": source_account.get("platform_account_name"),
+        "account_currency": account_info.get("currency", "TRY"),
+        "access_token_encrypted": source_account["access_token_encrypted"],
+        "refresh_token_encrypted": source_account.get("refresh_token_encrypted"),
+        "token_expires_at": source_account.get("token_expires_at"),
+        "platform_metadata": {
+            "mcc_id": mcc_id,
+            "mcc_name": source_account.get("platform_metadata", {}).get("mcc_name"),
+            "added_by_id": True,
+        },
+        "is_active": True,
+        "sync_enabled": True,
+        "status": "active",
+        "connected_by": user_id,
+    }
+    
+    # Save to database
+    result = supabase.client.table("connected_accounts").insert(account_data).execute()
+    
+    if not result.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Hesap kaydedilemedi",
+        )
+    
+    return AddAccountByIdResponse(
+        success=True,
+        account_id=request.account_id,
+        message=f"Hesap başarıyla eklendi: {account_name}",
+        account=ConnectedAccountResponse(**result.data[0]),
+    )
+

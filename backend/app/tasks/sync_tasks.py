@@ -77,11 +77,11 @@ async def _sync_account_metrics_async(
             "celery_task_id": task.request.id,
         })
         
-        # Determine date range
+        # Determine date range - default to last 30 days
         if not date_from or not date_to:
-            yesterday = date.today() - timedelta(days=1)
-            sync_date_from = date.fromisoformat(date_from) if date_from else yesterday
-            sync_date_to = date.fromisoformat(date_to) if date_to else yesterday
+            today = date.today()
+            sync_date_to = date.fromisoformat(date_to) if date_to else today - timedelta(days=1)
+            sync_date_from = date.fromisoformat(date_from) if date_from else today - timedelta(days=30)
         else:
             sync_date_from = date.fromisoformat(date_from)
             sync_date_to = date.fromisoformat(date_to)
@@ -245,5 +245,5 @@ async def _save_metrics(
     
     # Upsert metrics
     result = await supabase.upsert_daily_metrics(records)
-    return len(result)
+    return len(result) if result else 0
 

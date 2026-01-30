@@ -32,6 +32,7 @@ export interface Account {
     platform: 'google_ads' | 'meta_ads';
     platform_account_id: string;
     platform_account_name: string | null;
+    account_name?: string;
     status: 'active' | 'paused' | 'disconnected' | 'error';
     last_sync_at: string | null;
     last_sync_status: 'pending' | 'running' | 'completed' | 'failed' | null;
