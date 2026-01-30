@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
     LayoutDashboard,
     Users,
@@ -24,7 +24,17 @@ const navItems = [
 
 export function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+    const handleLogout = () => {
+        // Clear all auth data
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        // Redirect to login
+        router.push("/login");
+    };
 
     return (
         <>
@@ -73,9 +83,9 @@ export function Sidebar() {
                                 href={item.href}
                                 onClick={() => setIsMobileOpen(false)}
                                 className={cn(
-                                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium",
                                     isActive
-                                        ? "bg-primary text-white"
+                                        ? "bg-primary-dark text-white"
                                         : "text-foreground hover:bg-cream"
                                 )}
                             >
@@ -96,7 +106,13 @@ export function Sidebar() {
                             <p className="text-sm font-medium truncate">Kullanıcı</p>
                             <p className="text-xs text-muted-foreground truncate">user@example.com</p>
                         </div>
-                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-danger">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-danger"
+                            onClick={handleLogout}
+                            title="Çıkış Yap"
+                        >
                             <LogOut size={18} />
                         </Button>
                     </div>
