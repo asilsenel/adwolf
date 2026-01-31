@@ -25,6 +25,8 @@ import {
     RefreshCw,
     Calendar,
     Filter,
+    ChevronDown,
+    ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -93,6 +95,8 @@ export default function DashboardPage() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [dateRange, setDateRange] = useState(30); // Default to 30 days
     const [selectedAccountId, setSelectedAccountId] = useState<string>("all"); // "all" or account ID
+    const [isAccountsExpanded, setIsAccountsExpanded] = useState(true); // Collapsible accounts section
+    const [isSyncingAll, setIsSyncingAll] = useState(false); // Bulk sync state
 
     // Hydrate auth state on mount
     useEffect(() => {
@@ -194,6 +198,31 @@ export default function DashboardPage() {
         }
     };
 
+    const handleSyncAll = async () => {
+        if (accounts.length === 0) return;
+
+        setIsSyncingAll(true);
+        try {
+            // Sync all accounts sequentially
+            for (const account of accounts) {
+                // Skip MCC accounts (they can't be synced directly)
+                const isMcc = account.platform_account_id === (account as unknown as { platform_metadata?: { mcc_id?: string } }).platform_metadata?.mcc_id;
+                if (isMcc) continue;
+
+                try {
+                    await api.post(`/api/v1/accounts/${account.id}/sync`);
+                } catch (err) {
+                    console.error(`Sync failed for account ${account.id}:`, err);
+                }
+            }
+
+            // Refresh all data after sync
+            await fetchAllData();
+        } finally {
+            setIsSyncingAll(false);
+        }
+    };
+
     // Convert daily data for chart component
     const chartData = dailyData.map(d => ({
         date: new Date(d.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
@@ -244,11 +273,21 @@ export default function DashboardPage() {
             />
 
             <div className="p-6 space-y-6">
-                {/* Connected Accounts Section */}
+                {/* Connected Accounts Section - Collapsible */}
                 <Card className="bg-white border-primary-light">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg">Bağlı Hesaplar ({accounts.length})</CardTitle>
-                        <div className="flex gap-2">
+                    <CardHeader
+                        className="flex flex-row items-center justify-between cursor-pointer"
+                        onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <CardTitle className="text-lg">Bağlı Hesaplar ({accounts.length})</CardTitle>
+                            {isAccountsExpanded ? (
+                                <ChevronUp size={18} className="text-muted-foreground" />
+                            ) : (
+                                <ChevronDown size={18} className="text-muted-foreground" />
+                            )}
+                        </div>
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -262,17 +301,19 @@ export default function DashboardPage() {
                             <ConnectGoogleAds variant="small" />
                         </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {accounts.map((account) => (
-                                <AccountCard
-                                    key={account.id}
-                                    account={account}
-                                    onSync={handleSync}
-                                />
-                            ))}
-                        </div>
-                    </CardContent>
+                    {isAccountsExpanded && (
+                        <CardContent>
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {accounts.map((account) => (
+                                    <AccountCard
+                                        key={account.id}
+                                        account={account}
+                                        onSync={handleSync}
+                                    />
+                                ))}
+                            </div>
+                        </CardContent>
+                    )}
                 </Card>
 
                 {/* Metrics Section - Only show if we have real data */}
@@ -356,9 +397,26 @@ export default function DashboardPage() {
                             <AlertCircle size={48} className="mx-auto text-muted-foreground mb-4" />
                             <h3 className="text-lg font-semibold mb-2">Henüz Metrik Verisi Yok</h3>
                             <p className="text-muted-foreground mb-4">
-                                Bağlı hesaplarınızdan veri çekmek için "Senkronize Et" butonuna tıklayın.
+                                Bağlı hesaplarınızdan veri çekmek için aşağıdaki butona tıklayın.
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <Button
+                                onClick={handleSyncAll}
+                                disabled={isSyncingAll || accounts.length === 0}
+                                className="bg-primary hover:bg-primary-dark text-white"
+                            >
+                                {isSyncingAll ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin mr-2" />
+                                        Senkronize Ediliyor...
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCw size={16} className="mr-2" />
+                                        Tüm Hesapları Senkronize Et
+                                    </>
+                                )}
+                            </Button>
+                            <p className="text-sm text-muted-foreground mt-4">
                                 İlk senkronizasyon Google Ads API'sinden gerçek verileri çekecektir.
                             </p>
                         </CardContent>
