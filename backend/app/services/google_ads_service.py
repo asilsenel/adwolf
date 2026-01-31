@@ -224,12 +224,13 @@ async def generate_and_store_demo_metrics(account_id: str, date_from: str, date_
         
         records.append({
             "account_id": account_id,
+            "platform": "google_ads",
             "date": current.strftime("%Y-%m-%d"),
             "impressions": impressions,
             "clicks": clicks,
             "spend_micros": spend_micros,
             "conversions": conversions,
-            # Note: conversion_value_micros column doesn't exist in table
+            "conversion_value_micros": 0,
         })
         
         current += timedelta(days=1)
