@@ -93,6 +93,45 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
         }
     };
 
+    const handleImportAll = async () => {
+        const importable = accounts.filter(a => !a.already_connected && !a.is_manager);
+        if (importable.length === 0) return;
+
+        const allIds = importable.map(a => a.id);
+
+        setIsImporting(true);
+        setError(null);
+        setImportResults(null);
+
+        try {
+            const response = await api.post<{
+                success: boolean;
+                imported_count: number;
+                failed_count: number;
+            }>("/api/v1/accounts/import/google-ads", {
+                account_ids: allIds,
+            });
+
+            setImportResults(response.data);
+
+            if (response.data.imported_count > 0) {
+                await fetchAvailableAccounts();
+                setSelectedIds(new Set());
+
+                setTimeout(() => {
+                    setIsOpen(false);
+                    setImportResults(null);
+                    onSuccess?.();
+                }, 2000);
+            }
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { detail?: string } } };
+            setError(error.response?.data?.detail || "İçe aktarma sırasında bir hata oluştu");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
     const handleImport = async () => {
         if (selectedIds.size === 0) return;
 
@@ -250,9 +289,10 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
                                                         ? "bg-primary border-primary"
                                                         : "border-gray-300"
                                                 }`}>
-                                                    {selectedIds.has(account.id) && (
-                                                        <Check size={14} className="text-white" />
-                                                    )}
+                                                    <Check
+                                                        size={14}
+                                                        className={selectedIds.has(account.id) ? "text-white" : "text-gray-300"}
+                                                    />
                                                 </div>
                                                 <div className="flex-1">
                                                     <p className="font-medium">{account.name}</p>
@@ -325,9 +365,20 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
                                 setError(null);
                                 setImportResults(null);
                             }}
-                            className="flex-1"
                         >
                             İptal
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleImportAll}
+                            disabled={isImporting || importableAccounts.length === 0}
+                        >
+                            {isImporting ? (
+                                <Loader2 size={16} className="animate-spin mr-1" />
+                            ) : (
+                                <Download size={16} className="mr-1" />
+                            )}
+                            Tümünü Ekle
                         </Button>
                         <Button
                             onClick={handleImport}
