@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/services/api";
@@ -39,8 +39,15 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
         imported_count: number;
         failed_count: number;
     } | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchAvailableAccounts = async () => {
+        // Cancel previous request if exists
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
         setIsLoading(true);
         setError(null);
         try {
@@ -48,7 +55,9 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
                 success: boolean;
                 accounts: AvailableAccount[];
                 message?: string;
-            }>("/api/v1/accounts/available/google-ads");
+            }>("/api/v1/accounts/available/google-ads", {
+                signal: abortControllerRef.current.signal,
+            });
 
             if (response.data.success) {
                 setAccounts(response.data.accounts);
@@ -61,6 +70,10 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
                 setError(response.data.message || "Hesaplar yüklenemedi");
             }
         } catch (err: unknown) {
+            // Ignore abort errors
+            if (err instanceof Error && err.name === 'CanceledError') {
+                return;
+            }
             const error = err as { response?: { data?: { detail?: string } } };
             setError(error.response?.data?.detail || "Hesaplar yüklenirken bir hata oluştu");
         } finally {
@@ -72,6 +85,12 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
         if (isOpen) {
             fetchAvailableAccounts();
         }
+        return () => {
+            // Cleanup: cancel pending request when modal closes
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, [isOpen]);
 
     const handleToggleSelect = (accountId: string) => {
@@ -284,14 +303,15 @@ export function ImportGoogleAdsAccounts({ onSuccess }: ImportGoogleAdsAccountsPr
                                             }`}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                                                     selectedIds.has(account.id)
-                                                        ? "bg-primary border-primary"
-                                                        : "border-gray-300"
+                                                        ? "bg-green-500 border-green-500"
+                                                        : "border-gray-300 bg-white"
                                                 }`}>
                                                     <Check
                                                         size={14}
-                                                        className={selectedIds.has(account.id) ? "text-white" : "text-gray-300"}
+                                                        strokeWidth={3}
+                                                        className={selectedIds.has(account.id) ? "text-white" : "text-green-500"}
                                                     />
                                                 </div>
                                                 <div className="flex-1">
