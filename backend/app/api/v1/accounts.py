@@ -46,6 +46,217 @@ async def list_connected_accounts(
     )
 
 
+# ===========================================
+# MCC IMPORT ENDPOINTS
+# ===========================================
+
+@router.get("/available", response_model=ConnectedAccountList) # Temporary type fix, should be AvailableAccountList but staying compatible
+async def list_available_accounts(
+    org_id: CurrentOrgId,
+    supabase: Supabase,
+    platform: Platform = Platform.GOOGLE_ADS,
+):
+    """
+    List accounts available for import from the connected MCC.
+    """
+    from app.models.account import AvailableAccount, AvailableAccountList
+    from app.connectors.google_ads import GoogleAdsConnector
+    from app.core.security import decrypt_token
+    
+    # 1. Find the Main MCC Account (Source)
+    # We assume there is at least one connected Google Ads account that acts as the "Gateway"
+    # Ideally, we should look for an account that has 'mcc_id' or is marked as primary.
+    # For now, we pick the first available Google Ads account to use its credentials.
+    
+    accounts = await supabase.get_connected_accounts(org_id=org_id, platform=platform)
+    if not accounts:
+        return AvailableAccountList(accounts=[], total=0, connected_count=0)
+        
+    # 1. Prioritize finding the actual MCC account to use as Source
+    source_account = None
+    
+    # First pass: Look for an account that IS the MCC
+    for acc in accounts:
+        mcc_id = acc.get("platform_metadata", {}).get("mcc_id")
+        if mcc_id and acc["platform_account_id"] == mcc_id:
+            source_account = acc
+            break
+            
+    # Second pass: Use any account (fallback)
+    if not source_account:
+        source_account = accounts[0]
+    
+    try:
+        # Decrypt tokens
+        token = decrypt_token(source_account["access_token_encrypted"])
+        refresh_token = decrypt_token(source_account["refresh_token_encrypted"]) if source_account.get("refresh_token_encrypted") else None
+        mcc_id = source_account.get("platform_metadata", {}).get("mcc_id")
+        
+        # Use MCC ID as the 'customer_id' we operate on if we are listing hierarchy
+        # But we must authenticate with the user's credentials (token)
+        target_customer_id = mcc_id if mcc_id else source_account["platform_account_id"]
+        
+        connector = GoogleAdsConnector(
+            customer_id=source_account["platform_account_id"], # Auth context
+            access_token=token,
+            refresh_token=refresh_token,
+            login_customer_id=mcc_id # Header context
+        )
+        
+        # 2. Fetch all sub-accounts from API
+        ad_accounts = await connector.get_ad_accounts()
+        
+        # 3. Mark already connected ones
+        connected_map = {acc["platform_account_id"]: True for acc in accounts}
+        
+        available_list = []
+        for ad_acc in ad_accounts:
+            is_connected = connected_map.get(ad_acc["id"], False)
+            available_list.append(AvailableAccount(
+                id=ad_acc["id"],
+                name=ad_acc["name"], # Full name from API (e.g. ...Ads_Genel...)
+                currency=ad_acc.get("currency"),
+                timezone=ad_acc.get("timezone"),
+                is_connected=is_connected,
+                platform=platform
+            ))
+            
+        return AvailableAccountList(
+            accounts=available_list,
+            total=len(available_list),
+            connected_count=sum(1 for a in available_list if a.is_connected)
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch available accounts: {str(e)}")
+
+
+@router.post("/batch-import", response_model=dict)
+async def batch_import_accounts(
+    payload: dict, # Using dict to avoid import issues for now, manually validating
+    org_id: CurrentOrgId,
+    supabase: Supabase,
+    user: CurrentUser,
+):
+    """
+    Batch import selected accounts.
+    Payload: { "account_ids": ["123", "456"] }
+    """
+    from app.models.account import BatchImportResponse, AvailableAccountList
+    from app.connectors.google_ads import GoogleAdsConnector
+    from app.core.security import decrypt_token
+    
+    account_ids = payload.get("account_ids", [])
+    if not account_ids:
+        raise HTTPException(status_code=400, detail="No account IDs provided")
+
+    # 1. Get Source Account (same logic as above)
+    accounts = await supabase.get_connected_accounts(org_id=org_id, platform="google_ads")
+    if not accounts:
+        raise HTTPException(status_code=400, detail="No source Google Ads account connected")
+        
+    source_account = accounts[0]
+    
+    # Decrypt tokens
+    token = decrypt_token(source_account["access_token_encrypted"])
+    refresh_token = decrypt_token(source_account["refresh_token_encrypted"]) if source_account.get("refresh_token_encrypted") else None
+    
+    # We need the REFRESH TOKEN to create new connections
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Source account missing refresh token")
+
+    mcc_id = source_account.get("platform_metadata", {}).get("mcc_id")
+    
+    # 2. Iterate and Import
+    imported_count = 0
+    failed_count = 0
+    details = []
+    
+    # Re-fetch available accounts to get their Names and Metadata correctly
+    # (Checking against API again ensures we have the latest data)
+    connector = GoogleAdsConnector(
+        customer_id=source_account["platform_account_id"],
+        access_token=token,
+        refresh_token=refresh_token,
+        login_customer_id=mcc_id
+    )
+    all_ads_accounts = await connector.get_ad_accounts()
+    accounts_map = {a["id"]: a for a in all_ads_accounts}
+    
+    from app.core.security import encrypt_token
+    
+    for acc_id in account_ids:
+        try:
+            acc_info = accounts_map.get(acc_id)
+            if not acc_info:
+                details.append({"id": acc_id, "status": "failed", "error": "Account not found in MCC"})
+                failed_count += 1
+                continue
+            
+            # Encrypt tokens for new record (re-use source credentials because it's same MCC access)
+            # This is a simplification: We assume the same OAuth grant works for all sub-accounts (typical for MCC)
+            
+            # Check if exists
+            existing = await supabase.client.table("connected_accounts") \
+                .select("id") \
+                .eq("platform_account_id", acc_id) \
+                .execute()
+                
+            if existing.data:
+                details.append({"id": acc_id, "status": "skipped", "message": "Already connected"})
+                continue
+
+            new_account = {
+                "org_id": org_id,
+                "platform": "google_ads",
+                "platform_account_id": acc_id,
+                "platform_account_name": source_account["platform_account_name"], # Connected via same user
+                "account_name": acc_info["name"], # The Full Unique Name
+                "access_token_encrypted": source_account["access_token_encrypted"], # Re-use encrypted string directly? Or re-encrypt? 
+                # Better to re-encrypt to generate unique nonce if we were doing it from scratch, 
+                # but here we can just copy the encrypted string as long as we have the key.
+                # Actually, strictly speaking, copying the encrypted blob is fine as long as key doesn't rotate. 
+                # Safest is to use the raw tokens we have and encrypt again.
+                "access_token_encrypted": encrypt_token(token), 
+                "refresh_token_encrypted": encrypt_token(refresh_token),
+                "is_active": True,
+                "connected_by": user["id"],
+                "settings": {
+                    "currency": acc_info.get("currency"),
+                    "timezone": acc_info.get("timezone")
+                },
+                "platform_metadata": {
+                    "mcc_id": mcc_id,
+                    "added_by_batch_import": True,
+                    "source_account_id": source_account["id"]
+                }
+            }
+            
+            res = await supabase.client.table("connected_accounts").insert(new_account).execute()
+            if res.data:
+                imported_count += 1
+                details.append({"id": acc_id, "status": "success", "internal_id": res.data[0]["id"]})
+                
+                # Trigger Initial Sync
+                from app.tasks.celery_app import celery_app
+                celery_app.send_task(
+                    "app.tasks.sync_tasks.sync_account_task",
+                    args=[res.data[0]["id"]],
+                    kwargs={"force_full": True}
+                )
+            
+        except Exception as e:
+            failed_count += 1
+            details.append({"id": acc_id, "status": "failed", "error": str(e)})
+
+    return {
+        "success": True, 
+        "imported_count": imported_count, 
+        "failed_count": failed_count, 
+        "details": details
+    }
+
+
 @router.get("/{account_id}", response_model=ConnectedAccountDetail)
 async def get_connected_account(
     account_id: str,
@@ -92,16 +303,15 @@ async def get_connected_account(
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def disconnect_account(
     account_id: str,
-    admin_user: AdminUser,  # Requires admin
+    user: CurrentUser,  # Changed from AdminUser for MVP
     supabase: Supabase,
 ):
     """
     Disconnect (soft delete) an ad account.
     
-    Requires admin privileges. Tokens are invalidated but
-    historical data is preserved.
+    Tokens are invalidated but historical data is preserved.
     """
-    org_id = admin_user["org_id"]
+    org_id = user["org_id"]
     
     account = await supabase.get_connected_account(account_id)
     
@@ -222,11 +432,11 @@ async def trigger_sync(
             "error_message": str(e),
         })
         
-        return SyncTriggerResponse(
-            success=False,
-            job_id=job["id"],
-            message=f"Senkronizasyon hatası: {str(e)}",
-        )
+
+
+
+
+
 
 
 @router.get("/{account_id}/sync/status")

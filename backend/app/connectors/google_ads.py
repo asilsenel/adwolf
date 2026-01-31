@@ -149,47 +149,51 @@ class GoogleAdsConnector(BaseConnector):
             return {"id": self.customer_id, "name": f"Google Ads - {self.customer_id}"}
 
     async def get_ad_accounts(self) -> list[dict]:
-        """Get accessible Google Ads accounts."""
+        """Get accessible Google Ads accounts (sub-accounts of the MCC)."""
         try:
             client = self._get_client()
-            customer_service = client.get_service("CustomerService")
+            ga_service = client.get_service("GoogleAdsService")
             
-            accessible_customers = customer_service.list_accessible_customers()
+            # If we are an MCC (have login_customer_id), we should query the hierarchy
+            # If not, we fall back to listing accessible customers
+            
+            target_id = self.login_customer_id or self.customer_id
+            
+            # Query for sub-accounts
+            # Relaxed filters to ensure we catch all accessible accounts
+            query = """
+                SELECT 
+                    customer_client.id,
+                    customer_client.descriptive_name,
+                    customer_client.currency_code,
+                    customer_client.time_zone,
+                    customer_client.manager,
+                    customer_client.status
+                FROM customer_client
+                WHERE customer_client.status != 'CANCELED'
+            """
+            
+            response = ga_service.search(
+                customer_id=target_id,
+                query=query,
+            )
             
             accounts = []
-            for resource_name in accessible_customers.resource_names:
-                customer_id = resource_name.split("/")[1]
+            for row in response:
+                # Skip the manager account itself if it appears in the list
+                if row.customer_client.id == int(target_id):
+                    continue
+                    
                 accounts.append({
-                    "id": customer_id,
+                    "id": str(row.customer_client.id),
                     "platform": "google_ads",
-                    "resource_name": resource_name,
+                    "name": row.customer_client.descriptive_name or f"Account {row.customer_client.id}",
+                    "currency": row.customer_client.currency_code,
+                    "timezone": row.customer_client.time_zone,
+                    "is_manager": row.customer_client.manager,
                 })
             
-            # Get detailed info for each account
-            ga_service = client.get_service("GoogleAdsService")
-            for account in accounts:
-                try:
-                    query = f"""
-                        SELECT 
-                            customer.id,
-                            customer.descriptive_name,
-                            customer.currency_code,
-                            customer.time_zone
-                        FROM customer
-                    """
-                    response = ga_service.search(
-                        customer_id=account["id"],
-                        query=query,
-                    )
-                    for row in response:
-                        account["name"] = row.customer.descriptive_name
-                        account["currency"] = row.customer.currency_code
-                        account["timezone"] = row.customer.time_zone
-                        break
-                except Exception as e:
-                    logger.warning(f"Could not get details for account {account['id']}: {e}")
-                    account["name"] = f"Account {account['id']}"
-            
+            logger.info(f"Found {len(accounts)} sub-accounts for MCC {target_id}")
             return accounts
             
         except GoogleAdsException as ex:

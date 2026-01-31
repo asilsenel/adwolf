@@ -121,6 +121,7 @@ class ConnectedAccountResponse(BaseModel):
     last_sync_at: Optional[datetime] = None
     last_sync_status: Optional[SyncStatus] = None
     is_active: bool
+    platform_metadata: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 
@@ -180,3 +181,38 @@ class SyncTriggerResponse(BaseModel):
     success: bool
     job_id: str
     message: str
+
+
+# ===========================================
+# IMPORT MODELS
+# ===========================================
+
+class AvailableAccount(BaseModel):
+    """Account available for import from MCC."""
+    id: str
+    name: str
+    currency: Optional[str] = None
+    timezone: Optional[str] = None
+    is_connected: bool = False
+    platform: Platform = Platform.GOOGLE_ADS
+
+
+class AvailableAccountList(BaseModel):
+    """List of available accounts."""
+    accounts: list[AvailableAccount]
+    total: int
+    connected_count: int
+
+
+class BatchImportRequest(BaseModel):
+    """Request to batch import accounts."""
+    account_ids: list[str] = Field(..., description="List of account IDs to import")
+
+
+class BatchImportResponse(BaseModel):
+    """Response for batch import."""
+    success: bool
+    imported_count: int
+    failed_count: int
+    details: list[dict]
+
