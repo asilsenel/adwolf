@@ -271,6 +271,275 @@ from pydantic import BaseModel, field_validator
 import re
 
 
+class AvailableGoogleAdsAccount(BaseModel):
+    """A Google Ads account available for import."""
+    id: str
+    name: str
+    currency: str | None = None
+    timezone: str | None = None
+    is_manager: bool = False
+    already_connected: bool = False
+
+
+class AvailableAccountsResponse(BaseModel):
+    """Response with list of available accounts to import."""
+    success: bool
+    accounts: list[AvailableGoogleAdsAccount]
+    total: int
+    message: str | None = None
+
+
+class BulkImportRequest(BaseModel):
+    """Request to import multiple accounts at once."""
+    account_ids: list[str]
+
+
+class BulkImportResult(BaseModel):
+    """Result of a single account import."""
+    account_id: str
+    success: bool
+    account_name: str | None = None
+    error: str | None = None
+
+
+class BulkImportResponse(BaseModel):
+    """Response after bulk import."""
+    success: bool
+    imported_count: int
+    failed_count: int
+    results: list[BulkImportResult]
+
+
+@router.get("/available/google-ads", response_model=AvailableAccountsResponse)
+async def list_available_google_ads_accounts(
+    current_user: CurrentUser,
+    supabase: Supabase,
+):
+    """
+    List all Google Ads accounts accessible via the connected OAuth.
+
+    Returns accounts from the MCC hierarchy that can be imported.
+    """
+    org_id = current_user["org_id"]
+
+    # Find an existing Google Ads account with OAuth tokens
+    existing_accounts = await supabase.get_connected_accounts(org_id=org_id)
+
+    source_account = None
+    for acc in existing_accounts:
+        if acc["platform"] == "google_ads" and acc.get("refresh_token_encrypted"):
+            source_account = acc
+            break
+
+    if not source_account:
+        return AvailableAccountsResponse(
+            success=False,
+            accounts=[],
+            total=0,
+            message="Önce OAuth ile Google Ads hesabınızı bağlamanız gerekiyor",
+        )
+
+    # Get already connected account IDs
+    connected_ids = {
+        acc["platform_account_id"]
+        for acc in existing_accounts
+        if acc["platform"] == "google_ads"
+    }
+
+    try:
+        from app.connectors.google_ads import GoogleAdsConnector
+        from app.core.security import decrypt_token
+
+        access_token = decrypt_token(source_account["access_token_encrypted"])
+        refresh_token = decrypt_token(source_account["refresh_token_encrypted"])
+
+        mcc_id = source_account.get("platform_metadata", {}).get("mcc_id")
+
+        connector = GoogleAdsConnector(
+            customer_id=mcc_id or source_account["platform_account_id"],
+            access_token=access_token,
+            refresh_token=refresh_token,
+            login_customer_id=mcc_id,
+        )
+
+        # Get all accessible accounts
+        accounts = await connector.get_ad_accounts()
+
+        available = []
+        for acc in accounts:
+            available.append(AvailableGoogleAdsAccount(
+                id=acc["id"],
+                name=acc.get("name", f"Account {acc['id']}"),
+                currency=acc.get("currency"),
+                timezone=acc.get("timezone"),
+                is_manager=acc.get("is_manager", False),
+                already_connected=acc["id"] in connected_ids,
+            ))
+
+        return AvailableAccountsResponse(
+            success=True,
+            accounts=available,
+            total=len(available),
+        )
+
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to list available accounts: {e}")
+        return AvailableAccountsResponse(
+            success=False,
+            accounts=[],
+            total=0,
+            message=f"Hesaplar alınamadı: {str(e)}",
+        )
+
+
+@router.post("/import/google-ads", response_model=BulkImportResponse)
+async def bulk_import_google_ads_accounts(
+    request: BulkImportRequest,
+    current_user: CurrentUser,
+    supabase: Supabase,
+):
+    """
+    Import multiple Google Ads accounts at once.
+
+    Uses existing OAuth tokens to add selected accounts.
+    """
+    import uuid
+    org_id = current_user["org_id"]
+    user_id = current_user["id"]
+
+    # Find source account with tokens
+    existing_accounts = await supabase.get_connected_accounts(org_id=org_id)
+
+    source_account = None
+    for acc in existing_accounts:
+        if acc["platform"] == "google_ads" and acc.get("refresh_token_encrypted"):
+            source_account = acc
+            break
+
+    if not source_account:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Önce OAuth ile bir Google Ads hesabı bağlamanız gerekiyor",
+        )
+
+    # Get already connected IDs
+    connected_ids = {
+        acc["platform_account_id"]
+        for acc in existing_accounts
+        if acc["platform"] == "google_ads"
+    }
+
+    try:
+        from app.connectors.google_ads import GoogleAdsConnector
+        from app.core.security import decrypt_token
+
+        access_token = decrypt_token(source_account["access_token_encrypted"])
+        refresh_token = decrypt_token(source_account["refresh_token_encrypted"])
+        mcc_id = source_account.get("platform_metadata", {}).get("mcc_id")
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Token hatası: {str(e)}",
+        )
+
+    results = []
+    imported_count = 0
+    failed_count = 0
+
+    for account_id in request.account_ids:
+        # Skip already connected
+        if account_id in connected_ids:
+            results.append(BulkImportResult(
+                account_id=account_id,
+                success=False,
+                error="Bu hesap zaten bağlı",
+            ))
+            failed_count += 1
+            continue
+
+        try:
+            # Create connector for this specific account
+            connector = GoogleAdsConnector(
+                customer_id=account_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                login_customer_id=mcc_id,
+            )
+
+            # Validate and get account info
+            is_valid = await connector.validate_connection()
+            if not is_valid:
+                results.append(BulkImportResult(
+                    account_id=account_id,
+                    success=False,
+                    error="Hesap doğrulanamadı",
+                ))
+                failed_count += 1
+                continue
+
+            account_info = await connector.get_account_info()
+            account_name = account_info.get("name", f"Google Ads - {account_id}")
+
+            # Create new connected account
+            new_account_id = str(uuid.uuid4())
+            account_data = {
+                "id": new_account_id,
+                "org_id": org_id,
+                "platform": "google_ads",
+                "platform_account_id": account_id,
+                "account_name": account_name,
+                "platform_account_name": source_account.get("platform_account_name"),
+                "account_currency": account_info.get("currency", "TRY"),
+                "access_token_encrypted": source_account["access_token_encrypted"],
+                "refresh_token_encrypted": source_account.get("refresh_token_encrypted"),
+                "token_expires_at": source_account.get("token_expires_at"),
+                "platform_metadata": {
+                    "mcc_id": mcc_id,
+                    "mcc_name": source_account.get("platform_metadata", {}).get("mcc_name"),
+                    "imported_bulk": True,
+                },
+                "is_active": True,
+                "sync_enabled": True,
+                "status": "active",
+                "connected_by": user_id,
+            }
+
+            result = supabase.client.table("connected_accounts").insert(account_data).execute()
+
+            if result.data:
+                results.append(BulkImportResult(
+                    account_id=account_id,
+                    success=True,
+                    account_name=account_name,
+                ))
+                imported_count += 1
+                connected_ids.add(account_id)  # Prevent duplicates in same batch
+            else:
+                results.append(BulkImportResult(
+                    account_id=account_id,
+                    success=False,
+                    error="Veritabanına kaydedilemedi",
+                ))
+                failed_count += 1
+
+        except Exception as e:
+            results.append(BulkImportResult(
+                account_id=account_id,
+                success=False,
+                error=str(e),
+            ))
+            failed_count += 1
+
+    return BulkImportResponse(
+        success=imported_count > 0,
+        imported_count=imported_count,
+        failed_count=failed_count,
+        results=results,
+    )
+
+
 class AddAccountByIdRequest(BaseModel):
     """Request to add a Google Ads account by ID."""
     account_id: str

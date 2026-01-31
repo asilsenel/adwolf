@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PlatformIcon, getPlatformLabel } from "@/components/accounts/platform-icon";
+import { ImportGoogleAdsAccounts } from "@/components/integrations/ImportGoogleAdsAccounts";
 import { Plus, RefreshCw, Settings, Trash2, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/services/api";
@@ -109,8 +110,9 @@ export default function AccountsPage() {
             />
 
             <div className="p-6 space-y-6">
-                {/* Add Account Button */}
-                <div className="flex justify-end">
+                {/* Account Actions */}
+                <div className="flex justify-end gap-2">
+                    <ImportGoogleAdsAccounts onSuccess={fetchAccounts} />
                     <Link href="/accounts/connect">
                         <Button>
                             <Plus size={18} />
