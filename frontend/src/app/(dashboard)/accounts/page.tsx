@@ -32,6 +32,7 @@ export default function AccountsPage() {
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState<string | null>(null);
+    const [isSyncingAll, setIsSyncingAll] = useState(false);
 
     useEffect(() => {
         hydrate();
@@ -75,6 +76,27 @@ export default function AccountsPage() {
         }
     };
 
+    const handleSyncAll = async () => {
+        if (accounts.length === 0) return;
+
+        setIsSyncingAll(true);
+        try {
+            // Sync all accounts sequentially
+            for (const account of accounts) {
+                try {
+                    await api.post(`/api/v1/accounts/${account.id}/sync`);
+                } catch (err) {
+                    console.error(`Sync failed for account ${account.id}:`, err);
+                }
+            }
+
+            // Refresh accounts after sync
+            await fetchAccounts();
+        } finally {
+            setIsSyncingAll(false);
+        }
+    };
+
     const formatLastSync = (lastSync: string | null) => {
         if (!lastSync) return "Hiç";
         try {
@@ -112,6 +134,16 @@ export default function AccountsPage() {
             <div className="p-6 space-y-6">
                 {/* Account Actions */}
                 <div className="flex justify-end gap-2">
+                    {accounts.length > 0 && (
+                        <Button
+                            variant="outline"
+                            onClick={handleSyncAll}
+                            disabled={isSyncingAll || isSyncing !== null}
+                        >
+                            <RefreshCw size={16} className={isSyncingAll ? "animate-spin mr-1" : "mr-1"} />
+                            {isSyncingAll ? "Senkronize Ediliyor..." : "Tümünü Senkronize Et"}
+                        </Button>
+                    )}
                     <ImportGoogleAdsAccounts onSuccess={fetchAccounts} />
                     <Link href="/accounts/connect">
                         <Button>
