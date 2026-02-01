@@ -210,28 +210,68 @@ class SupabaseService:
         account_id: Optional[str] = None,
         campaign_id: Optional[str] = None
     ) -> list[dict]:
-        """Get daily metrics with filters."""
-        # First get connected accounts for the org
-        accounts = await self.get_connected_accounts(org_id)
+        """Get daily metrics with filters.
+
+        Explicitly selects all necessary columns including spend_micros
+        to ensure metrics data is properly retrieved.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # First get connected accounts for the org (only active ones)
+        accounts = await self.get_connected_accounts(org_id, is_active=True)
         account_ids = [a["id"] for a in accounts]
-        
+
         if not account_ids:
+            logger.warning(f"No active connected accounts found for org {org_id}")
             return []
-        
-        # Simple query without campaigns join (relationship may not exist)
+
+        logger.info(f"Fetching metrics for {len(account_ids)} accounts: {account_ids}")
+
+        # Explicitly select all metric columns to ensure spend_micros is included
+        # Using inner join with connected_accounts to filter by org_id
+        select_columns = (
+            "id, "
+            "account_id, "
+            "campaign_id, "
+            "platform, "
+            "entity_type, "
+            "entity_id, "
+            "date, "
+            "impressions, "
+            "clicks, "
+            "spend_micros, "
+            "conversions, "
+            "conversion_value_micros, "
+            "created_at, "
+            "updated_at, "
+            "connected_accounts!inner(org_id)"
+        )
+
         query = self._client.table("daily_metrics") \
-            .select("*") \
-            .in_("account_id", account_ids) \
+            .select(select_columns) \
+            .eq("connected_accounts.org_id", org_id) \
             .gte("date", date_from) \
             .lte("date", date_to)
-        
+
         if account_id:
             query = query.eq("account_id", account_id)
-        
+
         if campaign_id:
             query = query.eq("campaign_id", campaign_id)
-        
+
         result = query.order("date", desc=True).execute()
+
+        # Log sample data for debugging
+        if result.data:
+            logger.info(f"Retrieved {len(result.data)} metric records")
+            sample = result.data[0] if result.data else {}
+            logger.debug(f"Sample metric: spend_micros={sample.get('spend_micros')}, "
+                        f"impressions={sample.get('impressions')}, "
+                        f"clicks={sample.get('clicks')}")
+        else:
+            logger.warning(f"No metrics found for org {org_id} between {date_from} and {date_to}")
+
         return result.data
 
     # ===========================================
