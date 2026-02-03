@@ -316,39 +316,39 @@ export default function DashboardPage() {
                     )}
                 </Card>
 
+                {/* Filters - Always visible */}
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-foreground">Performans Metrikleri</h2>
+                    <div className="flex items-center gap-4">
+                        {/* Account Filter */}
+                        {accounts.length > 1 && (
+                            <AccountSelector
+                                accounts={accounts}
+                                selectedAccountId={selectedAccountId}
+                                onSelect={setSelectedAccountId}
+                            />
+                        )}
+                        {/* Date Range Filter */}
+                        <div className="flex items-center gap-2">
+                            <Calendar size={16} className="text-muted-foreground" />
+                            <select
+                                value={dateRange}
+                                onChange={(e) => setDateRange(Number(e.target.value))}
+                                className="bg-white border border-primary-light rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            >
+                                {DATE_RANGES.map((range) => (
+                                    <option key={range.value} value={range.value}>
+                                        {range.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Metrics Section - Only show if we have real data */}
                 {hasMetrics ? (
                     <>
-                        {/* Date Range Selector */}
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-foreground">Performans Metrikleri</h2>
-                            <div className="flex items-center gap-4">
-                                {/* Account Filter */}
-                                {accounts.length > 1 && (
-                                    <AccountSelector
-                                        accounts={accounts}
-                                        selectedAccountId={selectedAccountId}
-                                        onSelect={setSelectedAccountId}
-                                    />
-                                )}
-                                {/* Date Range Filter */}
-                                <div className="flex items-center gap-2">
-                                    <Calendar size={16} className="text-muted-foreground" />
-                                    <select
-                                        value={dateRange}
-                                        onChange={(e) => setDateRange(Number(e.target.value))}
-                                        className="bg-white border border-primary-light rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                                    >
-                                        {DATE_RANGES.map((range) => (
-                                            <option key={range.value} value={range.value}>
-                                                {range.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
                         {/* Metric Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <MetricCard
