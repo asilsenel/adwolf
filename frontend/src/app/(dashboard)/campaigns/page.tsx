@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/services/api";
@@ -19,6 +19,11 @@ import {
     Trash2,
     Building2,
     Search,
+    DollarSign,
+    Calendar,
+    Tag,
+    Info,
+    X,
 } from "lucide-react";
 import { PlatformIcon, getPlatformLabel } from "@/components/accounts/platform-icon";
 
@@ -30,6 +35,10 @@ interface Campaign {
     campaign_type?: string;
     daily_budget?: number;
     budget_currency?: string;
+    start_date?: string;
+    end_date?: string;
+    created_at?: string;
+    updated_at?: string;
 }
 
 interface AccountWithCampaigns extends Account {
@@ -43,8 +52,11 @@ export default function CampaignsPage() {
     const [accountsWithCampaigns, setAccountsWithCampaigns] = useState<AccountWithCampaigns[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [accountSearchQuery, setAccountSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [isSyncingAll, setIsSyncingAll] = useState(false);
+    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+    const [selectedAccountName, setSelectedAccountName] = useState<string>("");
 
     useEffect(() => {
         hydrate();
@@ -68,47 +80,36 @@ export default function CampaignsPage() {
             const accountsData: AccountWithCampaigns[] = accounts.map((acc: Account) => ({
                 ...acc,
                 campaigns: [],
-                isExpanded: false,
+                isExpanded: true, // Start expanded
                 isLoading: false,
             }));
 
             setAccountsWithCampaigns(accountsData);
 
             // Fetch campaigns for all accounts in parallel
-            await Promise.all(accountsData.map((acc) => fetchCampaignsForAccount(acc.id)));
+            const updatedAccounts = await Promise.all(
+                accountsData.map(async (acc) => {
+                    try {
+                        const campaignsRes = await api.get<{ campaigns: Campaign[] }>(
+                            `/api/v1/accounts/${acc.id}/campaigns`
+                        );
+                        return {
+                            ...acc,
+                            campaigns: campaignsRes.data.campaigns || [],
+                            isLoading: false,
+                        };
+                    } catch (error) {
+                        console.error(`Failed to fetch campaigns for ${acc.id}:`, error);
+                        return { ...acc, campaigns: [], isLoading: false };
+                    }
+                })
+            );
+
+            setAccountsWithCampaigns(updatedAccounts);
         } catch (error) {
             console.error("Failed to fetch accounts:", error);
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const fetchCampaignsForAccount = async (accountId: string) => {
-        setAccountsWithCampaigns((prev) =>
-            prev.map((acc) =>
-                acc.id === accountId ? { ...acc, isLoading: true } : acc
-            )
-        );
-
-        try {
-            const response = await api.get<{ campaigns: Campaign[] }>(
-                `/api/v1/accounts/${accountId}/campaigns`
-            );
-
-            setAccountsWithCampaigns((prev) =>
-                prev.map((acc) =>
-                    acc.id === accountId
-                        ? { ...acc, campaigns: response.data.campaigns || [], isLoading: false }
-                        : acc
-                )
-            );
-        } catch (error) {
-            console.error(`Failed to fetch campaigns for ${accountId}:`, error);
-            setAccountsWithCampaigns((prev) =>
-                prev.map((acc) =>
-                    acc.id === accountId ? { ...acc, campaigns: [], isLoading: false } : acc
-                )
-            );
         }
     };
 
@@ -129,7 +130,17 @@ export default function CampaignsPage() {
 
         try {
             await api.post(`/api/v1/accounts/${accountId}/sync`);
-            await fetchCampaignsForAccount(accountId);
+            // Refresh campaigns for this account
+            const campaignsRes = await api.get<{ campaigns: Campaign[] }>(
+                `/api/v1/accounts/${accountId}/campaigns`
+            );
+            setAccountsWithCampaigns((prev) =>
+                prev.map((acc) =>
+                    acc.id === accountId
+                        ? { ...acc, campaigns: campaignsRes.data.campaigns || [], isLoading: false }
+                        : acc
+                )
+            );
         } catch (error) {
             console.error("Sync failed:", error);
             setAccountsWithCampaigns((prev) =>
@@ -150,28 +161,39 @@ export default function CampaignsPage() {
                     console.error(`Sync failed for ${account.id}:`, err);
                 }
             }
-            // Refresh all campaigns
-            await Promise.all(accountsWithCampaigns.map((acc) => fetchCampaignsForAccount(acc.id)));
+            // Refresh all
+            await fetchAccounts();
         } finally {
             setIsSyncingAll(false);
         }
     };
 
-    const getStatusBadge = (status: string) => {
+    const openCampaignDetails = (campaign: Campaign, accountName: string) => {
+        setSelectedCampaign(campaign);
+        setSelectedAccountName(accountName);
+    };
+
+    const closeCampaignDetails = () => {
+        setSelectedCampaign(null);
+        setSelectedAccountName("");
+    };
+
+    const getStatusBadge = (status: string, size: "sm" | "md" = "sm") => {
+        const sizeClass = size === "md" ? "text-sm px-3 py-1" : "text-xs";
         switch (status) {
             case "enabled":
-                return <Badge variant="success" className="text-xs"><TrendingUp size={10} className="mr-1" />Aktif</Badge>;
+                return <Badge variant="success" className={sizeClass}><TrendingUp size={size === "md" ? 14 : 10} className="mr-1" />Aktif</Badge>;
             case "paused":
-                return <Badge variant="warning" className="text-xs"><Pause size={10} className="mr-1" />Durduruldu</Badge>;
+                return <Badge variant="warning" className={sizeClass}><Pause size={size === "md" ? 14 : 10} className="mr-1" />Durduruldu</Badge>;
             case "removed":
-                return <Badge variant="secondary" className="text-xs"><Trash2 size={10} className="mr-1" />Silindi</Badge>;
+                return <Badge variant="secondary" className={sizeClass}><Trash2 size={size === "md" ? 14 : 10} className="mr-1" />Silindi</Badge>;
             default:
-                return <Badge variant="secondary" className="text-xs">{status}</Badge>;
+                return <Badge variant="secondary" className={sizeClass}>{status}</Badge>;
         }
     };
 
     const formatCampaignType = (type?: string) => {
-        if (!type) return null;
+        if (!type) return "Bilinmiyor";
         const typeMap: Record<string, string> = {
             "SEARCH": "Arama",
             "DISPLAY": "Görüntülü",
@@ -187,13 +209,31 @@ export default function CampaignsPage() {
     };
 
     const formatBudget = (budget?: number, currency?: string) => {
-        if (!budget) return null;
+        if (!budget) return "Belirtilmemiş";
         return new Intl.NumberFormat("tr-TR", {
             style: "currency",
             currency: currency || "TRY",
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
         }).format(budget);
+    };
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return "Belirtilmemiş";
+        return new Date(dateStr).toLocaleDateString("tr-TR", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+        });
+    };
+
+    // Filter accounts by search
+    const filterAccounts = (accounts: AccountWithCampaigns[]) => {
+        if (!accountSearchQuery) return accounts;
+        return accounts.filter((acc) => {
+            const name = acc.account_name || acc.platform_account_name || acc.platform_account_id;
+            return name.toLowerCase().includes(accountSearchQuery.toLowerCase());
+        });
     };
 
     // Filter campaigns based on search and status
@@ -207,7 +247,7 @@ export default function CampaignsPage() {
     };
 
     // Get total counts
-    const totalAccounts = accountsWithCampaigns.length;
+    const filteredAccounts = filterAccounts(accountsWithCampaigns);
     const totalCampaigns = accountsWithCampaigns.reduce((sum, acc) => sum + acc.campaigns.length, 0);
     const activeCampaigns = accountsWithCampaigns.reduce(
         (sum, acc) => sum + acc.campaigns.filter((c) => c.status === "enabled").length,
@@ -239,7 +279,7 @@ export default function CampaignsPage() {
                                     <Building2 size={20} className="text-blue-600" />
                                 </div>
                                 <div>
-                                    <p className="text-2xl font-bold">{totalAccounts}</p>
+                                    <p className="text-2xl font-bold">{accountsWithCampaigns.length}</p>
                                     <p className="text-sm text-muted-foreground">Hesap</p>
                                 </div>
                             </div>
@@ -275,8 +315,19 @@ export default function CampaignsPage() {
 
                 {/* Filters */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div className="flex items-center gap-3">
-                        {/* Search */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                        {/* Account Search */}
+                        <div className="relative">
+                            <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                                type="text"
+                                placeholder="Hesap ara..."
+                                value={accountSearchQuery}
+                                onChange={(e) => setAccountSearchQuery(e.target.value)}
+                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                        </div>
+                        {/* Campaign Search */}
                         <div className="relative">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <input
@@ -284,7 +335,7 @@ export default function CampaignsPage() {
                                 placeholder="Kampanya ara..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                         </div>
                         {/* Status filter */}
@@ -320,11 +371,12 @@ export default function CampaignsPage() {
 
                 {/* Accounts with Campaigns Tree */}
                 <div className="space-y-3">
-                    {accountsWithCampaigns.map((account) => {
+                    {filteredAccounts.map((account) => {
                         const filteredCampaigns = filterCampaigns(account.campaigns);
-                        const hasMatchingCampaigns = filteredCampaigns.length > 0 || (searchQuery === "" && statusFilter === "all");
+                        const accountName = account.account_name || account.platform_account_name || account.platform_account_id;
 
-                        if (!hasMatchingCampaigns && (searchQuery !== "" || statusFilter !== "all")) {
+                        // Hide accounts with no matching campaigns if filtering
+                        if ((searchQuery || statusFilter !== "all") && filteredCampaigns.length === 0) {
                             return null;
                         }
 
@@ -345,9 +397,7 @@ export default function CampaignsPage() {
                                         </button>
                                         <PlatformIcon platform={account.platform} size={32} />
                                         <div>
-                                            <h3 className="font-semibold">
-                                                {account.account_name || account.platform_account_name || account.platform_account_id}
-                                            </h3>
+                                            <h3 className="font-semibold">{accountName}</h3>
                                             <p className="text-sm text-muted-foreground">
                                                 {getPlatformLabel(account.platform)} • {account.platform_account_id}
                                             </p>
@@ -394,7 +444,8 @@ export default function CampaignsPage() {
                                                 {filteredCampaigns.map((campaign) => (
                                                     <div
                                                         key={campaign.id}
-                                                        className="flex items-center justify-between px-4 py-3 pl-14 hover:bg-gray-100 transition-colors"
+                                                        className="flex items-center justify-between px-4 py-3 pl-14 hover:bg-gray-100 transition-colors cursor-pointer"
+                                                        onClick={() => openCampaignDetails(campaign, accountName)}
                                                     >
                                                         <div className="flex items-center gap-3 flex-1 min-w-0">
                                                             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -415,8 +466,9 @@ export default function CampaignsPage() {
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div className="ml-4">
+                                                        <div className="flex items-center gap-2 ml-4">
                                                             {getStatusBadge(campaign.status)}
+                                                            <Info size={16} className="text-muted-foreground" />
                                                         </div>
                                                     </div>
                                                 ))}
@@ -442,6 +494,122 @@ export default function CampaignsPage() {
                     </Card>
                 )}
             </div>
+
+            {/* Campaign Details Sidebar */}
+            {selectedCampaign && (
+                <>
+                    {/* Overlay */}
+                    <div
+                        className="fixed inset-0 bg-black/30 z-40"
+                        onClick={closeCampaignDetails}
+                    />
+                    {/* Sidebar */}
+                    <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 overflow-y-auto">
+                        {/* Header */}
+                        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+                            <h2 className="text-lg font-semibold">Kampanya Detayları</h2>
+                            <button
+                                onClick={closeCampaignDetails}
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 space-y-6">
+                            {/* Campaign Name & Status */}
+                            <div>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                                            <Target size={24} className="text-primary" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-lg">{selectedCampaign.name}</h3>
+                                            <p className="text-sm text-muted-foreground">{selectedAccountName}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-3">
+                                    {getStatusBadge(selectedCampaign.status, "md")}
+                                </div>
+                            </div>
+
+                            {/* Details Grid */}
+                            <div className="space-y-4">
+                                {/* Campaign Type */}
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <Tag size={18} className="text-muted-foreground" />
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Kampanya Türü</p>
+                                        <p className="font-medium">{formatCampaignType(selectedCampaign.campaign_type)}</p>
+                                    </div>
+                                </div>
+
+                                {/* Daily Budget */}
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <DollarSign size={18} className="text-muted-foreground" />
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Günlük Bütçe</p>
+                                        <p className="font-medium">{formatBudget(selectedCampaign.daily_budget, selectedCampaign.budget_currency)}</p>
+                                    </div>
+                                </div>
+
+                                {/* Platform Campaign ID */}
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <Info size={18} className="text-muted-foreground" />
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Platform Kampanya ID</p>
+                                        <p className="font-medium font-mono text-sm">{selectedCampaign.platform_campaign_id}</p>
+                                    </div>
+                                </div>
+
+                                {/* Start Date */}
+                                {selectedCampaign.start_date && (
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                        <Calendar size={18} className="text-muted-foreground" />
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Başlangıç Tarihi</p>
+                                            <p className="font-medium">{formatDate(selectedCampaign.start_date)}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* End Date */}
+                                {selectedCampaign.end_date && (
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                        <Calendar size={18} className="text-muted-foreground" />
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Bitiş Tarihi</p>
+                                            <p className="font-medium">{formatDate(selectedCampaign.end_date)}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Created At */}
+                                {selectedCampaign.created_at && (
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                        <Calendar size={18} className="text-muted-foreground" />
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Oluşturulma Tarihi</p>
+                                            <p className="font-medium">{formatDate(selectedCampaign.created_at)}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Note */}
+                            <div className="p-4 bg-blue-50 rounded-lg">
+                                <p className="text-sm text-blue-700">
+                                    <strong>Not:</strong> Bu kampanya Google Ads hesabınızdan senkronize edilmiştir.
+                                    Kampanya ayarlarını değiştirmek için Google Ads panelini kullanın.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
