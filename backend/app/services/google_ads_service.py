@@ -95,109 +95,163 @@ class GoogleAdsService:
 async def sync_account_metrics(account_id: str, date_from: str, date_to: str) -> dict:
     """
     Sync metrics for a connected Google Ads account.
-    
-    Fetches data from Google Ads API and stores in database.
-    If API fails, generates demo data for MVP.
+
+    Uses GoogleAdsConnector (google-ads library) for reliable API access.
+    Fetches campaign-level metrics and stores in database.
     """
     import logging
+    from datetime import datetime
+    from app.connectors.google_ads import GoogleAdsConnector
+
     logger = logging.getLogger(__name__)
     logger.info(f"=== SYNC STARTED for account {account_id} ===")
     logger.info(f"Date range: {date_from} to {date_to}")
-    
+
     supabase = get_supabase_service()
-    
+
     # Get account with encrypted tokens
     account = await supabase.get_connected_account(account_id)
     if not account:
         logger.error("Account not found!")
         return {"success": False, "error": "Account not found"}
-    
+
     logger.info(f"Account found: {account.get('platform_account_id')}")
-    
+
     if account["platform"] != "google_ads":
         logger.error("Not a Google Ads account")
         return {"success": False, "error": "Not a Google Ads account"}
-    
+
     # Check if developer token is configured
     dev_token = settings.google_ads_developer_token
     logger.info(f"Developer token configured: {bool(dev_token and dev_token != 'placeholder')}")
-    
+
     if not dev_token or dev_token == "placeholder":
         logger.info("No developer token, generating demo data...")
         return await generate_and_store_demo_metrics(account_id, date_from, date_to)
-    
-    # Decrypt access token
+
+    # Decrypt tokens
     try:
         access_token = decrypt_token(account["access_token_encrypted"])
-        logger.info("Access token decrypted successfully")
+        refresh_token = None
+        if account.get("refresh_token_encrypted"):
+            refresh_token = decrypt_token(account["refresh_token_encrypted"])
+        logger.info("Tokens decrypted successfully")
     except Exception as e:
-        logger.error(f"Failed to decrypt token: {e}")
+        logger.error(f"Failed to decrypt tokens: {e}")
         logger.info("Falling back to demo data...")
         return await generate_and_store_demo_metrics(account_id, date_from, date_to)
-    
-    # Initialize service
-    service = GoogleAdsService(
-        access_token=access_token,
-        developer_token=settings.google_ads_developer_token,
-    )
-    
+
+    # Get MCC ID from platform_metadata
+    mcc_id = account.get("platform_metadata", {}).get("mcc_id")
+    customer_id = account.get("platform_account_id")
+
+    logger.info(f"Customer ID: {customer_id}, MCC ID: {mcc_id}")
+
     try:
-        # Get accessible customers
-        customer_ids = await service.list_accessible_customers()
-        
-        if not customer_ids:
-            print("No accessible customers found, using demo data")
+        # Use GoogleAdsConnector (google-ads library) for reliable API access
+        connector = GoogleAdsConnector(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            customer_id=customer_id,
+            login_customer_id=mcc_id,
+        )
+
+        # Validate connection
+        is_valid = await connector.validate_connection()
+        if not is_valid:
+            logger.warning("Connection validation failed, using demo data")
             return await generate_and_store_demo_metrics(account_id, date_from, date_to)
-        
-        # Use first customer (or the one stored in account)
-        customer_id = account.get("platform_account_id") or customer_ids[0]
-        
-        # Fetch metrics
-        metrics = await service.get_account_metrics(customer_id, date_from, date_to)
-        
-        if "error" in metrics:
-            print(f"API error: {metrics['error']}, using demo data")
-            return await generate_and_store_demo_metrics(account_id, date_from, date_to)
-        
-        # Process Google Ads response and store in database
-        records = parse_google_ads_response(account_id, metrics)
-        
+
+        # Parse dates
+        start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+        end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+
+        # Fetch campaign-level metrics using the connector
+        metrics = await connector.get_metrics(
+            date_from=start_date,
+            date_to=end_date,
+            level="campaign",
+            account_id=customer_id,
+        )
+
+        logger.info(f"Fetched {len(metrics)} metric records from Google Ads API")
+
+        if not metrics:
+            logger.warning("No metrics returned from API")
+            return {
+                "success": True,
+                "customer_id": customer_id,
+                "records_count": 0,
+                "message": "No metrics data available for this date range"
+            }
+
+        # Convert connector metrics to database format
+        # Note: ctr, cpc, cpm, roas, cpa are generated columns in database - don't include them
+        records = []
+        for m in metrics:
+            records.append({
+                "account_id": account_id,
+                "date": m["date"],
+                "entity_type": m.get("entity_type", "campaign"),
+                "entity_id": m.get("campaign_id") or m.get("entity_id"),
+                "entity_name": m.get("campaign_name") or m.get("entity_name"),
+                "platform": "google_ads",
+                "impressions": m.get("impressions", 0),
+                "clicks": m.get("clicks", 0),
+                "spend": m.get("spend", 0),
+                "conversions": m.get("conversions", 0),
+                "conversion_value": m.get("conversion_value", 0),
+                "currency": m.get("currency", "TRY"),
+                # ctr, cpc, cpm, roas, cpa are generated columns - database calculates them automatically
+            })
+
+        # Store in database
         if records:
             await supabase.upsert_daily_metrics(records)
-        
+            logger.info(f"Stored {len(records)} metric records in database")
+
         return {
             "success": True,
             "customer_id": customer_id,
             "records_count": len(records),
         }
-        
+
     except Exception as e:
-        print(f"Error syncing from Google Ads: {e}, using demo data")
+        logger.error(f"Error syncing from Google Ads: {e}", exc_info=True)
+        logger.info("Falling back to demo data...")
         return await generate_and_store_demo_metrics(account_id, date_from, date_to)
 
 
 def parse_google_ads_response(account_id: str, api_response: dict) -> list[dict]:
     """Parse Google Ads API response into daily_metrics records."""
     records = []
-    
+
     # Google Ads API returns data in batches
     for batch in api_response.get("results", [api_response]):
         results = batch.get("results", [])
         for row in results:
             metrics = row.get("metrics", {})
             segments = row.get("segments", {})
-            
+
+            # Convert micros to actual currency (database stores in TRY, not micros)
+            cost_micros = metrics.get("costMicros", 0)
+            spend = cost_micros / 1_000_000 if cost_micros else 0
+
             record = {
                 "account_id": account_id,
                 "date": segments.get("date"),
+                "entity_type": "account",
+                "entity_id": account_id,
+                "platform": "google_ads",
                 "impressions": metrics.get("impressions", 0),
                 "clicks": metrics.get("clicks", 0),
-                "spend_micros": metrics.get("costMicros", 0),
+                "spend": spend,  # Database uses 'spend' column (numeric)
                 "conversions": float(metrics.get("conversions", 0)),
-                "conversion_value_micros": 0,  # Not in basic query
+                "conversion_value": 0,  # Database uses 'conversion_value' column
+                "currency": "TRY",
             }
             records.append(record)
-    
+
     return records
 
 
@@ -205,41 +259,44 @@ async def generate_and_store_demo_metrics(account_id: str, date_from: str, date_
     """Generate demo metrics for testing when API is not available."""
     from random import randint, uniform
     from datetime import datetime, timedelta
-    
+
     supabase = get_supabase_service()
-    
+
     # Parse dates
     start = datetime.strptime(date_from, "%Y-%m-%d")
     end = datetime.strptime(date_to, "%Y-%m-%d")
-    
+
     records = []
     current = start
-    
+
     while current <= end:
         # Generate realistic-looking demo data
         impressions = randint(1000, 15000)
         clicks = randint(int(impressions * 0.02), int(impressions * 0.05))
-        spend_micros = randint(50_000_000, 500_000_000)  # 50-500 TRY in micros
+        spend = round(uniform(50, 500), 2)  # 50-500 TRY (database stores in currency, not micros)
         conversions = round(uniform(0, clicks * 0.1), 2)
-        
+
         records.append({
             "account_id": account_id,
             "platform": "google_ads",
             "date": current.strftime("%Y-%m-%d"),
+            "entity_type": "account",
+            "entity_id": account_id,
             "impressions": impressions,
             "clicks": clicks,
-            "spend_micros": spend_micros,
+            "spend": spend,  # Database uses 'spend' column (numeric in TRY)
             "conversions": conversions,
-            "conversion_value_micros": 0,
+            "conversion_value": 0,  # Database uses 'conversion_value' column
+            "currency": "TRY",
         })
-        
+
         current += timedelta(days=1)
-    
+
     # Store in database
     try:
         await supabase.upsert_daily_metrics(records)
         print(f"Stored {len(records)} demo metric records")
-        
+
         return {
             "success": True,
             "records_count": len(records),

@@ -88,16 +88,14 @@ async def get_metrics_summary(
         account_id=account_id,
     )
     
-    # Aggregate - database uses micros for precision
+    # Aggregate - database stores spend directly in currency (not micros)
     total_impressions = sum(m.get("impressions", 0) for m in metrics)
     total_clicks = sum(m.get("clicks", 0) for m in metrics)
-    # Convert from micros to actual currency
-    total_spend_micros = sum(m.get("spend_micros", 0) for m in metrics)
-    total_spend = Decimal(total_spend_micros) / Decimal(1_000_000)
-    total_conversions = sum(Decimal(str(m.get("conversions", 0))) for m in metrics)
-    # Convert from micros to actual currency
-    total_conv_value_micros = sum(m.get("conversion_value_micros", 0) for m in metrics)
-    total_conv_value = Decimal(total_conv_value_micros) / Decimal(1_000_000)
+    # Database uses 'spend' column directly (numeric, in TRY)
+    total_spend = sum(Decimal(str(m.get("spend", 0) or 0)) for m in metrics)
+    total_conversions = sum(Decimal(str(m.get("conversions", 0) or 0)) for m in metrics)
+    # Database uses 'conversion_value' column directly (numeric, in TRY)
+    total_conv_value = sum(Decimal(str(m.get("conversion_value", 0) or 0)) for m in metrics)
     
     # Calculate rates
     ctr = None
@@ -174,34 +172,34 @@ async def get_daily_metrics(
         account_id=account_id,
     )
     
-    # Group by date - database uses micros
+    # Group by date - database stores spend directly in currency
     from collections import defaultdict
     daily_agg = defaultdict(lambda: {
         "impressions": 0,
         "clicks": 0,
-        "spend_micros": 0,
+        "spend": Decimal("0"),
         "conversions": Decimal("0"),
-        "conversion_value_micros": 0,
+        "conversion_value": Decimal("0"),
     })
 
     for m in metrics:
         d = m.get("date")
         daily_agg[d]["impressions"] += m.get("impressions", 0)
         daily_agg[d]["clicks"] += m.get("clicks", 0)
-        daily_agg[d]["spend_micros"] += m.get("spend_micros", 0)
-        daily_agg[d]["conversions"] += Decimal(str(m.get("conversions", 0)))
-        daily_agg[d]["conversion_value_micros"] += m.get("conversion_value_micros", 0)
-    
-    # Convert to list - convert micros to actual currency
+        daily_agg[d]["spend"] += Decimal(str(m.get("spend", 0) or 0))
+        daily_agg[d]["conversions"] += Decimal(str(m.get("conversions", 0) or 0))
+        daily_agg[d]["conversion_value"] += Decimal(str(m.get("conversion_value", 0) or 0))
+
+    # Convert to list - spend is already in currency
     data = []
     for d, agg in sorted(daily_agg.items()):
         data.append(MetricsByDate(
             date=date.fromisoformat(d) if isinstance(d, str) else d,
             impressions=agg["impressions"],
             clicks=agg["clicks"],
-            spend=Decimal(agg["spend_micros"]) / Decimal(1_000_000),
+            spend=agg["spend"],
             conversions=agg["conversions"],
-            conversion_value=Decimal(agg["conversion_value_micros"]) / Decimal(1_000_000),
+            conversion_value=agg["conversion_value"],
         ))
     
     # Get summary
@@ -275,28 +273,28 @@ async def get_campaign_metrics(
     campaign_metrics = defaultdict(lambda: {
         "impressions": 0,
         "clicks": 0,
-        "spend_micros": 0,
+        "spend": Decimal("0"),
         "conversions": Decimal("0"),
-        "conversion_value_micros": 0,
+        "conversion_value": Decimal("0"),
     })
-    
+
     for m in metrics:
         cid = m.get("campaign_id")
         if cid:
             campaign_metrics[cid]["impressions"] += m.get("impressions", 0)
             campaign_metrics[cid]["clicks"] += m.get("clicks", 0)
-            campaign_metrics[cid]["spend_micros"] += m.get("spend_micros", 0)
-            campaign_metrics[cid]["conversions"] += Decimal(str(m.get("conversions", 0)))
-            campaign_metrics[cid]["conversion_value_micros"] += m.get("conversion_value_micros", 0)
-    
+            campaign_metrics[cid]["spend"] += Decimal(str(m.get("spend", 0) or 0))
+            campaign_metrics[cid]["conversions"] += Decimal(str(m.get("conversions", 0) or 0))
+            campaign_metrics[cid]["conversion_value"] += Decimal(str(m.get("conversion_value", 0) or 0))
+
     # Build response
     result = []
     for campaign in all_campaigns:
         cid = campaign["id"]
         cm = campaign_metrics.get(cid, {})
-        
-        spend = Decimal(cm.get("spend_micros", 0)) / Decimal(1_000_000)
-        conv_value = Decimal(cm.get("conversion_value_micros", 0)) / Decimal(1_000_000)
+
+        spend = cm.get("spend", Decimal("0"))
+        conv_value = cm.get("conversion_value", Decimal("0"))
         
         result.append(CampaignMetrics(
             id=campaign["id"],
@@ -341,6 +339,7 @@ async def get_metrics_by_platform(
     preset: DateRangePreset = Query(DateRangePreset.LAST_7_DAYS),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    account_id: Optional[str] = None,
 ):
     """
     Get metrics breakdown by platform.
@@ -353,25 +352,26 @@ async def get_metrics_by_platform(
     else:
         start_date, end_date = get_date_range(preset)
     
-    # Get metrics
+    # Get metrics (with optional account filter)
     metrics = await supabase.get_daily_metrics(
         org_id=org_id,
         date_from=start_date.isoformat(),
         date_to=end_date.isoformat(),
+        account_id=account_id,
     )
-    
+
     # Get accounts for platform info
     accounts = await supabase.get_connected_accounts(org_id=org_id)
     account_platform = {a["id"]: a["platform"] for a in accounts}
     
-    # Aggregate by platform - database uses micros
+    # Aggregate by platform - database stores spend directly in currency
     from collections import defaultdict
     platform_agg = defaultdict(lambda: {
         "impressions": 0,
         "clicks": 0,
-        "spend_micros": 0,
+        "spend": Decimal("0"),
         "conversions": Decimal("0"),
-        "conversion_value_micros": 0,
+        "conversion_value": Decimal("0"),
         "account_ids": set(),
         "campaign_ids": set(),
     })
@@ -381,35 +381,36 @@ async def get_metrics_by_platform(
         if p:
             platform_agg[p]["impressions"] += m.get("impressions", 0)
             platform_agg[p]["clicks"] += m.get("clicks", 0)
-            platform_agg[p]["spend_micros"] += m.get("spend_micros", 0)
-            platform_agg[p]["conversions"] += Decimal(str(m.get("conversions", 0)))
-            platform_agg[p]["conversion_value_micros"] += m.get("conversion_value_micros", 0)
+            platform_agg[p]["spend"] += Decimal(str(m.get("spend", 0) or 0))
+            platform_agg[p]["conversions"] += Decimal(str(m.get("conversions", 0) or 0))
+            platform_agg[p]["conversion_value"] += Decimal(str(m.get("conversion_value", 0) or 0))
             platform_agg[p]["account_ids"].add(m.get("account_id"))
             if m.get("entity_id"):
                 platform_agg[p]["campaign_ids"].add(m.get("entity_id"))
-    
-    # Build response - convert micros to actual currency
+
+    # Build response - spend is already in currency
     platforms = []
     for p, agg in platform_agg.items():
         platforms.append(PlatformMetrics(
             platform=Platform(p),
             impressions=agg["impressions"],
             clicks=agg["clicks"],
-            spend=Decimal(agg["spend_micros"]) / Decimal(1_000_000),
+            spend=agg["spend"],
             currency="TRY",
             conversions=agg["conversions"],
-            conversion_value=Decimal(agg["conversion_value_micros"]) / Decimal(1_000_000),
+            conversion_value=agg["conversion_value"],
             accounts_count=len(agg["account_ids"]),
             campaigns_count=len(agg["campaign_ids"]),
         ))
     
-    # Get total summary
+    # Get total summary (with optional account filter)
     total = await get_metrics_summary(
         org_id=org_id,
         supabase=supabase,
         date_from=start_date,
         date_to=end_date,
         compare=False,
+        account_id=account_id,
     )
     
     return MetricsByPlatform(

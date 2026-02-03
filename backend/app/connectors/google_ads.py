@@ -431,57 +431,70 @@ class GoogleAdsConnector(BaseConnector):
     def _parse_metrics_row(self, row, level: str) -> Optional[dict]:
         """Parse a metrics row into normalized format."""
         try:
+            # Convert micros to actual currency (database stores in TRY, not micros)
+            spend = row.metrics.cost_micros / 1_000_000 if row.metrics.cost_micros else 0
+            conversion_value = row.metrics.conversions_value if row.metrics.conversions_value else 0
+
             base_metrics = {
                 "date": str(row.segments.date),
                 "platform": "google_ads",
                 "impressions": row.metrics.impressions,
                 "clicks": row.metrics.clicks,
-                "spend_micros": row.metrics.cost_micros,
+                "spend": spend,  # Database uses 'spend' column (numeric in TRY)
                 "conversions": int(row.metrics.conversions),
-                "conversion_value_micros": int(row.metrics.conversions_value * 1_000_000),
+                "conversion_value": conversion_value,  # Database uses 'conversion_value' column
                 "currency": row.customer.currency_code,
             }
-            
+
             # Add CTR, CPC, etc.
             if base_metrics["impressions"] > 0:
                 base_metrics["ctr"] = base_metrics["clicks"] / base_metrics["impressions"]
             else:
                 base_metrics["ctr"] = 0.0
-            
+
             if base_metrics["clicks"] > 0:
-                base_metrics["cpc_micros"] = base_metrics["spend_micros"] / base_metrics["clicks"]
+                base_metrics["cpc"] = base_metrics["spend"] / base_metrics["clicks"]
             else:
-                base_metrics["cpc_micros"] = 0
-            
+                base_metrics["cpc"] = 0
+
             if base_metrics["impressions"] > 0:
-                base_metrics["cpm_micros"] = (base_metrics["spend_micros"] / base_metrics["impressions"]) * 1000
+                base_metrics["cpm"] = (base_metrics["spend"] / base_metrics["impressions"]) * 1000
             else:
-                base_metrics["cpm_micros"] = 0
-            
-            if base_metrics["spend_micros"] > 0 and base_metrics["conversion_value_micros"] > 0:
-                base_metrics["roas"] = base_metrics["conversion_value_micros"] / base_metrics["spend_micros"]
+                base_metrics["cpm"] = 0
+
+            if base_metrics["spend"] > 0 and base_metrics["conversion_value"] > 0:
+                base_metrics["roas"] = base_metrics["conversion_value"] / base_metrics["spend"]
             else:
                 base_metrics["roas"] = 0.0
-            
+
             if base_metrics["conversions"] > 0:
-                base_metrics["cpa_micros"] = base_metrics["spend_micros"] / base_metrics["conversions"]
+                base_metrics["cpa"] = base_metrics["spend"] / base_metrics["conversions"]
             else:
-                base_metrics["cpa_micros"] = 0
-            
+                base_metrics["cpa"] = 0
+
             # Add level-specific fields
             if level == "campaign":
+                base_metrics["entity_type"] = "campaign"
+                base_metrics["entity_id"] = str(row.campaign.id)
+                base_metrics["entity_name"] = row.campaign.name
                 base_metrics["campaign_id"] = str(row.campaign.id)
                 base_metrics["campaign_name"] = row.campaign.name
                 base_metrics["campaign_status"] = row.campaign.status.name.lower()
             elif level == "ad_group":
+                base_metrics["entity_type"] = "ad_group"
+                base_metrics["entity_id"] = str(row.ad_group.id)
+                base_metrics["entity_name"] = row.ad_group.name
                 base_metrics["campaign_id"] = str(row.campaign.id)
                 base_metrics["campaign_name"] = row.campaign.name
                 base_metrics["ad_set_id"] = str(row.ad_group.id)
                 base_metrics["ad_set_name"] = row.ad_group.name
                 base_metrics["ad_set_status"] = row.ad_group.status.name.lower()
-            
+            else:
+                base_metrics["entity_type"] = "account"
+                base_metrics["entity_id"] = self.customer_id
+
             return base_metrics
-            
+
         except Exception as e:
             logger.error(f"Error parsing metrics row: {e}")
             return None

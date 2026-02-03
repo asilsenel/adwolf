@@ -17,10 +17,10 @@ from app.core.config import settings
 def get_supabase_client() -> Client:
     """
     Get cached Supabase client instance.
-    
+
     Uses service_role key for backend operations.
     This bypasses Row Level Security - use carefully!
-    
+
     Returns:
         Supabase client instance
     """
@@ -33,7 +33,7 @@ def get_supabase_client() -> Client:
 class SupabaseService:
     """
     Service wrapper for Supabase operations.
-    
+
     Provides typed methods for common database operations.
     """
 
@@ -111,10 +111,10 @@ class SupabaseService:
             .select("*") \
             .eq("org_id", org_id) \
             .eq("is_active", is_active)
-        
+
         if platform:
             query = query.eq("platform", platform)
-        
+
         result = query.execute()
         return result.data
 
@@ -181,10 +181,10 @@ class SupabaseService:
         """Bulk upsert daily metrics."""
         import logging
         logger = logging.getLogger(__name__)
-        
+
         if not records:
             return []
-        
+
         # Try simple insert first
         try:
             result = self._client.table("daily_metrics").insert(records).execute()
@@ -192,7 +192,7 @@ class SupabaseService:
             return result.data
         except Exception as e:
             logger.warning(f"Insert failed, trying upsert: {e}")
-            
+
             # Fallback to upsert
             try:
                 result = self._client.table("daily_metrics").upsert(records).execute()
@@ -208,51 +208,23 @@ class SupabaseService:
         date_from: str,
         date_to: str,
         account_id: Optional[str] = None,
-        campaign_id: Optional[str] = None
+        campaign_id: Optional[str] = None,
+        include_inactive_accounts: bool = False
     ) -> list[dict]:
-        """Get daily metrics with filters.
+        """Get daily metrics with filters using efficient DB join."""
 
-        Explicitly selects all necessary columns including spend_micros
-        to ensure metrics data is properly retrieved.
-        """
-        import logging
-        logger = logging.getLogger(__name__)
-
-        # First get connected accounts for the org (only active ones)
-        accounts = await self.get_connected_accounts(org_id, is_active=True)
-        account_ids = [a["id"] for a in accounts]
-
-        if not account_ids:
-            logger.warning(f"No active connected accounts found for org {org_id}")
-            return []
-
-        logger.info(f"Fetching metrics for {len(account_ids)} accounts: {account_ids}")
-
-        # Explicitly select all metric columns to ensure spend_micros is included
-        # Using inner join with connected_accounts to filter by org_id
-        select_columns = (
-            "id, "
-            "account_id, "
-            "campaign_id, "
-            "platform, "
-            "entity_type, "
-            "entity_id, "
-            "date, "
-            "impressions, "
-            "clicks, "
-            "spend_micros, "
-            "conversions, "
-            "conversion_value_micros, "
-            "created_at, "
-            "updated_at, "
-            "connected_accounts!inner(org_id)"
-        )
-
+        # 'connected_accounts' tablosu ile inner join yaparak sadece
+        # ilgili org_id'ye ait hesapların verilerini çekiyoruz.
+        # Default olarak sadece aktif hesapların metriklerini gösteriyoruz.
         query = self._client.table("daily_metrics") \
-            .select(select_columns) \
+            .select("*, connected_accounts!inner(org_id, is_active)") \
             .eq("connected_accounts.org_id", org_id) \
             .gte("date", date_from) \
             .lte("date", date_to)
+
+        # Sadece aktif hesapların metriklerini göster (varsayılan davranış)
+        if not include_inactive_accounts:
+            query = query.eq("connected_accounts.is_active", True)
 
         if account_id:
             query = query.eq("account_id", account_id)
@@ -261,17 +233,6 @@ class SupabaseService:
             query = query.eq("campaign_id", campaign_id)
 
         result = query.order("date", desc=True).execute()
-
-        # Log sample data for debugging
-        if result.data:
-            logger.info(f"Retrieved {len(result.data)} metric records")
-            sample = result.data[0] if result.data else {}
-            logger.debug(f"Sample metric: spend_micros={sample.get('spend_micros')}, "
-                        f"impressions={sample.get('impressions')}, "
-                        f"clicks={sample.get('clicks')}")
-        else:
-            logger.warning(f"No metrics found for org {org_id} between {date_from} and {date_to}")
-
         return result.data
 
     # ===========================================
@@ -296,10 +257,10 @@ class SupabaseService:
             .select("*, recommended_actions(*)") \
             .eq("org_id", org_id) \
             .eq("is_dismissed", False)
-        
+
         if is_read is not None:
             query = query.eq("is_read", is_read)
-        
+
         result = query \
             .order("created_at", desc=True) \
             .limit(limit) \
