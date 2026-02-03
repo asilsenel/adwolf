@@ -257,6 +257,42 @@ async def batch_import_accounts(
     }
 
 
+@router.get("/{account_id}/campaigns")
+async def list_account_campaigns(
+    account_id: str,
+    org_id: CurrentOrgId,
+    supabase: Supabase,
+):
+    """
+    List all campaigns for a specific account.
+
+    Returns campaigns with their status and budget info.
+    """
+    account = await supabase.get_connected_account(account_id)
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found",
+        )
+
+    # Verify ownership
+    if account["org_id"] != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    # Get all campaigns (active and inactive)
+    campaigns = await supabase.get_campaigns(account_id, is_active=True)
+
+    return {
+        "account_id": account_id,
+        "campaigns": campaigns,
+        "total": len(campaigns),
+    }
+
+
 @router.get("/{account_id}", response_model=ConnectedAccountDetail)
 async def get_connected_account(
     account_id: str,

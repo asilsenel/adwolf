@@ -159,11 +159,15 @@ class SupabaseService:
         is_active: bool = True
     ) -> list[dict]:
         """Get campaigns for an account."""
-        result = self._client.table("campaigns") \
+        query = self._client.table("campaigns") \
             .select("*") \
-            .eq("account_id", account_id) \
-            .eq("is_active", is_active) \
-            .execute()
+            .eq("account_id", account_id)
+
+        # Filter by status if is_active is True (exclude removed campaigns)
+        if is_active:
+            query = query.neq("status", "removed")
+
+        result = query.order("name").execute()
         return result.data
 
     async def upsert_campaign(self, data: dict) -> dict:
