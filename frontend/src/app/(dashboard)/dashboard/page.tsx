@@ -6,8 +6,8 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { SpendChart } from "@/components/dashboard/spend-chart";
 import { PlatformSummary } from "@/components/dashboard/platform-summary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ConnectGoogleAds } from "@/components/integrations/ConnectGoogleAds";
+import { ConnectMeta } from "@/components/integrations/ConnectMeta";
 import { AccountCard } from "@/components/integrations/AccountCard";
 import { AddAccountById } from "@/components/integrations/AddAccountById";
 import { AccountSelector } from "@/components/dashboard/AccountSelector";
@@ -23,20 +23,13 @@ import {
     Sparkles,
     Loader2,
     RefreshCw,
-    Calendar,
-    Filter,
     ChevronDown,
     ChevronUp,
 } from "lucide-react";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 
-// Date range options
-const DATE_RANGES = [
-    { label: "Son 7 Gün", value: 7 },
-    { label: "Son 14 Gün", value: 14 },
-    { label: "Son 30 Gün", value: 30 },
-    { label: "Son 90 Gün", value: 90 },
-];
 
 // Types for real API data
 interface MetricsSummary {
@@ -86,17 +79,18 @@ interface MetricsByPlatform {
 }
 
 export default function DashboardPage() {
-    const { hydrate, isAuthenticated, user } = useAuthStore();
+    const { hydrate, isAuthenticated } = useAuthStore();
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
     const [dailyData, setDailyData] = useState<DailyMetric[]>([]);
     const [platformData, setPlatformData] = useState<PlatformMetric[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [dateRange, setDateRange] = useState(30); // Default to 30 days
-    const [selectedAccountId, setSelectedAccountId] = useState<string>("all"); // "all" or account ID
-    const [isAccountsExpanded, setIsAccountsExpanded] = useState(true); // Collapsible accounts section
-    const [isSyncingAll, setIsSyncingAll] = useState(false); // Bulk sync state
+    const [dateFrom, setDateFrom] = useState<Date>(() => subDays(new Date(), 30));
+    const [dateTo, setDateTo] = useState<Date>(() => new Date());
+    const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
+    const [isAccountsExpanded, setIsAccountsExpanded] = useState(true);
+    const [isSyncingAll, setIsSyncingAll] = useState(false);
 
     // Hydrate auth state on mount
     useEffect(() => {
@@ -110,18 +104,15 @@ export default function DashboardPage() {
         } else {
             setIsLoading(false);
         }
-    }, [isAuthenticated, dateRange, selectedAccountId]);
+    }, [isAuthenticated, dateFrom, dateTo, selectedAccountId]);
 
     const fetchAllData = async () => {
         try {
             setIsLoading(true);
 
-            // Calculate date range
-            const today = new Date();
-            const dateFrom = new Date(today);
-            dateFrom.setDate(dateFrom.getDate() - dateRange);
+            // Format date range
             const dateFromStr = dateFrom.toISOString().split('T')[0];
-            const dateToStr = today.toISOString().split('T')[0];
+            const dateToStr = dateTo.toISOString().split('T')[0];
 
             // Fetch accounts
             try {
@@ -190,8 +181,6 @@ export default function DashboardPage() {
         try {
             console.log("Starting sync for account:", accountId);
             await api.post(`/api/v1/accounts/${accountId}/sync`);
-
-            // Refresh all data after sync (silently)
             await fetchAllData();
         } catch (error: unknown) {
             console.error("Sync failed:", error);
@@ -203,9 +192,7 @@ export default function DashboardPage() {
 
         setIsSyncingAll(true);
         try {
-            // Sync all accounts sequentially
             for (const account of accounts) {
-                // Skip MCC accounts (they can't be synced directly)
                 const isMcc = account.platform_account_id === (account as unknown as { platform_metadata?: { mcc_id?: string } }).platform_metadata?.mcc_id;
                 if (isMcc) continue;
 
@@ -215,8 +202,6 @@ export default function DashboardPage() {
                     console.error(`Sync failed for account ${account.id}:`, err);
                 }
             }
-
-            // Refresh all data after sync
             await fetchAllData();
         } finally {
             setIsSyncingAll(false);
@@ -299,6 +284,7 @@ export default function DashboardPage() {
                             </Button>
                             <AddAccountById onSuccess={handleRefresh} />
                             <ConnectGoogleAds variant="small" />
+                            <ConnectMeta variant="small" />
                         </div>
                     </CardHeader>
                     {isAccountsExpanded && (
@@ -317,11 +303,11 @@ export default function DashboardPage() {
                 </Card>
 
                 {/* Filters - Always visible */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                     <h2 className="text-lg font-semibold text-foreground">Performans Metrikleri</h2>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 flex-wrap">
                         {/* Account Filter */}
-                        {accounts.length > 1 && (
+                        {accounts.length > 0 && (
                             <AccountSelector
                                 accounts={accounts}
                                 selectedAccountId={selectedAccountId}
@@ -329,20 +315,14 @@ export default function DashboardPage() {
                             />
                         )}
                         {/* Date Range Filter */}
-                        <div className="flex items-center gap-2">
-                            <Calendar size={16} className="text-muted-foreground" />
-                            <select
-                                value={dateRange}
-                                onChange={(e) => setDateRange(Number(e.target.value))}
-                                className="bg-white border border-primary-light rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                            >
-                                {DATE_RANGES.map((range) => (
-                                    <option key={range.value} value={range.value}>
-                                        {range.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <DateRangePicker
+                            startDate={dateFrom}
+                            endDate={dateTo}
+                            onChange={(start, end) => {
+                                setDateFrom(start);
+                                setDateTo(end);
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -433,7 +413,7 @@ export default function DashboardPage() {
                                 <p className="text-sm text-blue-700">
                                     {accounts.length} bağlı hesap bulundu.
                                     {hasMetrics
-                                        ? ` Son ${metrics?.campaigns_count || 0} kampanyadan veriler gösteriliyor.`
+                                        ? ` ${metrics?.campaigns_count || 0} kampanyadan veriler gösteriliyor.`
                                         : " Verileri görmek için hesabınızı senkronize edin."
                                     }
                                 </p>

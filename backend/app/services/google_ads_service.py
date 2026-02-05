@@ -166,6 +166,31 @@ async def sync_account_metrics(account_id: str, date_from: str, date_to: str) ->
         start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
         end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
 
+        # Fetch and store campaigns first
+        campaigns = await connector.get_campaigns(account_id=customer_id)
+        logger.info(f"Fetched {len(campaigns)} campaigns from Google Ads API")
+
+        # Store campaigns in database
+        for campaign in campaigns:
+            try:
+                # Convert micros to actual currency
+                daily_budget = None
+                if campaign.get("daily_budget_micros"):
+                    daily_budget = campaign["daily_budget_micros"] / 1_000_000
+
+                await supabase.upsert_campaign({
+                    "account_id": account_id,
+                    "platform_campaign_id": campaign["id"],
+                    "platform": "google_ads",
+                    "name": campaign["name"],
+                    "status": campaign["status"],
+                    "campaign_type": campaign.get("channel_type", "unknown"),
+                    "daily_budget": daily_budget,
+                    "budget_currency": "TRY",
+                })
+            except Exception as e:
+                logger.warning(f"Failed to upsert campaign {campaign['id']}: {e}")
+
         # Fetch campaign-level metrics using the connector
         metrics = await connector.get_metrics(
             date_from=start_date,
