@@ -268,7 +268,13 @@ async def list_account_campaigns(
 
     Returns campaigns with their status and budget info.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"=== CAMPAIGNS REQUEST for account_id: {account_id} ===")
+    logger.info(f"User org_id: {org_id}")
+
     account = await supabase.get_connected_account(account_id)
+    logger.info(f"Account found: {account is not None}")
 
     if not account:
         raise HTTPException(
@@ -276,8 +282,11 @@ async def list_account_campaigns(
             detail="Account not found",
         )
 
+    logger.info(f"Account org_id: {account.get('org_id')}")
+
     # Verify ownership
     if account["org_id"] != org_id:
+        logger.warning(f"Access denied: user org {org_id} != account org {account['org_id']}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
@@ -285,6 +294,7 @@ async def list_account_campaigns(
 
     # Get all campaigns (active and inactive)
     campaigns = await supabase.get_campaigns(account_id, is_active=True)
+    logger.info(f"Campaigns fetched: {len(campaigns)}")
 
     return {
         "account_id": account_id,

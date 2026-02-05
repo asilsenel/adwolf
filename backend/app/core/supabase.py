@@ -159,6 +159,10 @@ class SupabaseService:
         is_active: bool = True
     ) -> list[dict]:
         """Get campaigns for an account."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"get_campaigns called with account_id: {account_id}, is_active: {is_active}")
+
         query = self._client.table("campaigns") \
             .select("*") \
             .eq("account_id", account_id)
@@ -168,6 +172,9 @@ class SupabaseService:
             query = query.neq("status", "removed")
 
         result = query.order("name").execute()
+        logger.info(f"get_campaigns result count: {len(result.data)}")
+        if result.data:
+            logger.info(f"First campaign: {result.data[0].get('name', 'N/A')}")
         return result.data
 
     async def upsert_campaign(self, data: dict) -> dict:
