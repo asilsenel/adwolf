@@ -49,6 +49,14 @@ from app.models.insight import (
     DailyDigestResponse,
     DigestList,
 )
+from app.models.chat import (
+    ChatMessageRequest,
+    ChatMessageResponse,
+    ChatThreadResponse,
+    ChatThreadList,
+    ChatHistoryResponse,
+    StreamChunk,
+)
 from app.models.common import (
     SuccessResponse,
     ErrorResponse,
@@ -102,6 +110,13 @@ __all__ = [
     "ActionDismissRequest",
     "DailyDigestResponse",
     "DigestList",
+    # Chat
+    "ChatMessageRequest",
+    "ChatMessageResponse",
+    "ChatThreadResponse",
+    "ChatThreadList",
+    "ChatHistoryResponse",
+    "StreamChunk",
     # Common
     "SuccessResponse",
     "ErrorResponse",

@@ -337,6 +337,72 @@ class SupabaseService:
             .execute()
         return result.data or []
 
+    # ===========================================
+    # CHAT OPERATIONS
+    # ===========================================
+
+    async def create_chat_thread(self, data: dict) -> dict:
+        """Create a new chat thread."""
+        result = self._client.table("chat_threads") \
+            .insert(data) \
+            .execute()
+        return result.data[0]
+
+    async def get_chat_thread(self, thread_id: str) -> Optional[dict]:
+        """Get a chat thread by ID."""
+        result = self._client.table("chat_threads") \
+            .select("*") \
+            .eq("id", thread_id) \
+            .limit(1) \
+            .execute()
+        return result.data[0] if result.data else None
+
+    async def get_chat_threads(
+        self,
+        org_id: str,
+        user_id: str,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Get chat threads for a user in an organization."""
+        result = self._client.table("chat_threads") \
+            .select("*") \
+            .eq("org_id", org_id) \
+            .eq("user_id", user_id) \
+            .eq("is_active", True) \
+            .order("last_message_at", desc=True) \
+            .limit(limit) \
+            .execute()
+        return result.data or []
+
+    async def update_chat_thread(self, thread_id: str, data: dict) -> dict:
+        """Update a chat thread."""
+        result = self._client.table("chat_threads") \
+            .update(data) \
+            .eq("id", thread_id) \
+            .execute()
+        return result.data[0] if result.data else {}
+
+    async def create_chat_message(self, data: dict) -> dict:
+        """Create a new chat message."""
+        result = self._client.table("chat_messages") \
+            .insert(data) \
+            .execute()
+        return result.data[0]
+
+    async def get_chat_messages(
+        self,
+        thread_id: str,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Get messages for a chat thread."""
+        result = self._client.table("chat_messages") \
+            .select("*") \
+            .eq("thread_id", thread_id) \
+            .order("created_at", desc=False) \
+            .limit(limit) \
+            .execute()
+        return result.data or []
+
     async def get_latest_insight_time(self, org_id: str) -> Optional[str]:
         """Get the created_at of the most recent insight for rate limiting."""
         result = self._client.table("insights") \

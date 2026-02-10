@@ -11,7 +11,8 @@ import {
     Menu,
     ChevronLeft,
     ChevronRight,
-    Target
+    Target,
+    MessageSquare
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const navItems = [
     { href: "/accounts", icon: Users, label: "Hesaplar" },
     { href: "/campaigns", icon: Target, label: "Kampanyalar" },
     { href: "/insights", icon: Lightbulb, label: "Öneriler" },
+    { href: "/chat", icon: MessageSquare, label: "AI Asistan" },
     { href: "/settings", icon: Settings, label: "Ayarlar" },
 ];
 
