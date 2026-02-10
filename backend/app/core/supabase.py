@@ -5,7 +5,6 @@ Supabase client initialization for backend operations.
 Uses service_role key which bypasses RLS for admin operations.
 """
 
-from functools import lru_cache
 from typing import Optional
 
 from supabase import create_client, Client
@@ -13,10 +12,9 @@ from supabase import create_client, Client
 from app.core.config import settings
 
 
-@lru_cache
 def get_supabase_client() -> Client:
     """
-    Get cached Supabase client instance.
+    Create a fresh Supabase client instance.
 
     Uses service_role key for backend operations.
     This bypasses Row Level Security - use carefully!
@@ -159,10 +157,6 @@ class SupabaseService:
         is_active: bool = True
     ) -> list[dict]:
         """Get campaigns for an account."""
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"get_campaigns called with account_id: {account_id}, is_active: {is_active}")
-
         query = self._client.table("campaigns") \
             .select("*") \
             .eq("account_id", account_id)
@@ -172,9 +166,6 @@ class SupabaseService:
             query = query.neq("status", "removed")
 
         result = query.order("name").execute()
-        logger.info(f"get_campaigns result count: {len(result.data)}")
-        if result.data:
-            logger.info(f"First campaign: {result.data[0].get('name', 'N/A')}")
         return result.data
 
     async def upsert_campaign(self, data: dict) -> dict:
