@@ -6,7 +6,7 @@ API version 1 routers.
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, accounts, metrics, insights
+from app.api.v1 import auth, accounts, metrics, insights, chat
 
 
 # Create main v1 router
@@ -17,3 +17,4 @@ router.include_router(auth.router)
 router.include_router(accounts.router)
 router.include_router(metrics.router)
 router.include_router(insights.router)
+router.include_router(chat.router)
