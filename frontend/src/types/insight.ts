@@ -1,5 +1,6 @@
 /**
  * TypeScript types for Insights and Actions
+ * Aligned with database schema (insights, recommended_actions tables)
  */
 
 export type InsightType =
@@ -9,7 +10,7 @@ export type InsightType =
     | "opportunity"
     | "anomaly";
 
-export type InsightPriority = "low" | "medium" | "high" | "critical";
+export type InsightSeverity = "low" | "medium" | "high" | "critical";
 
 export type ActionStatus =
     | "pending"
@@ -20,39 +21,55 @@ export type ActionStatus =
 
 export interface RecommendedAction {
     id: string;
-    insight_id: string;
+    insight_id?: string;
     org_id: string;
-    title: string;
-    description?: string;
     action_type: string;
-    platform?: string;
-    target_entity_type?: string;
-    target_entity_id?: string;
-    action_params: Record<string, unknown>;
+    platform: string;
+    account_id?: string;
+    campaign_id?: string;
+    entity_type?: string;
+    entity_id?: string;
+    title: string;
+    description: string;
+    rationale?: string;
     expected_impact?: string;
-    estimated_improvement?: number;
+    is_executable: boolean;
+    api_payload?: Record<string, unknown>;
+    priority: number;
+    recommended_by?: string;
     status: ActionStatus;
     executed_at?: string;
+    executed_by?: string;
+    execution_result?: Record<string, unknown>;
     created_at: string;
 }
 
 export interface Insight {
     id: string;
     org_id: string;
+    insight_type: InsightType;
+    severity: InsightSeverity;
+    category?: string;
+    platform?: string;
     account_id?: string;
     campaign_id?: string;
-    type: InsightType;
-    priority: InsightPriority;
+    entity_type?: string;
+    entity_id?: string;
     title: string;
     summary: string;
     detailed_analysis?: string;
-    ai_confidence?: number;
+    metric_data?: Record<string, unknown>;
+    comparison_period?: Record<string, unknown>;
     is_read: boolean;
     is_dismissed: boolean;
+    is_actioned: boolean;
     read_at?: string;
+    actioned_at?: string;
+    ai_model?: string;
+    ai_confidence?: number;
     created_at: string;
-    valid_until?: string;
-    actions: RecommendedAction[];
+    expires_at?: string;
+    recommended_actions: RecommendedAction[];
 }
 
 export interface InsightList {

@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     meta_redirect_uri: str = "http://localhost:8000/api/v1/auth/meta/callback"
 
     # ===========================================
+    # OPENAI
+    # ===========================================
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+
+    # ===========================================
     # REDIS
     # ===========================================
     redis_url: str = "redis://redis:6379/0"

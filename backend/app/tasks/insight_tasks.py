@@ -2,6 +2,7 @@
 Ad Platform MVP - Insight Tasks
 
 Celery tasks for AI insight generation and daily digests.
+Uses campaign-level data for targeted, actionable insights.
 """
 
 import json
@@ -17,38 +18,46 @@ from app.core.supabase import get_supabase_service
 logger = logging.getLogger(__name__)
 
 
-# System prompt for insight generation
+# Enhanced system prompt for campaign-level insight generation
 INSIGHT_SYSTEM_PROMPT = """
-Sen deneyimli bir dijital pazarlama uzmanısın. Reklam performans verilerini analiz edip
-actionable insights üretiyorsun.
+Sen deneyimli bir dijital pazarlama uzmanissin. Reklam performans verilerini kampanya bazinda analiz edip
+somut, uygulanabilir insights uretiyorsun.
 
-Görevin:
-1. Verilerdeki önemli trendleri tespit et
-2. Performans anomalilerini belirle
-3. Optimizasyon fırsatlarını tanımla
-4. Somut aksiyon önerileri sun
+Gorevin:
+1. Kampanya bazinda performansi analiz et (en cok harcayan, en iyi/kotu performans gosterenler)
+2. Anomalileri tespit et (harcama artislari, CTR dususleri, donusum kayiplari)
+3. Butce optimizasyonu onerilerinde bulun (kampanyalar arasi butce dagitimi)
+4. Trend degisikliklerini yorumla (haftalik karsilastirma)
+5. Somut aksiyon onerileri sun (hangi kampanya icin ne yapilmali)
 
 Kurallar:
-- Somut verilere dayan (yüzde değişimler, mutlak rakamlar)
-- Karşılaştırma yap (önceki dönem, hedefler)
-- Net ve uygulanabilir öneriler sun
-- Türkçe ve profesyonel bir dil kullan
-- Her insight için priority belirle (low, medium, high, critical)
+- HER insight belirli bir kampanyaya veya hesaba yonelik olsun (genel ifadelerden kacin)
+- Somut verilere dayan (yuzde degisimler, mutlak rakamlar)
+- Oncelik belirleme: spend_spike, conversion_drop => critical/high; optimization => medium; genel bilgi => low
+- Turkce ve profesyonel bir dil kullan
+- Maksimum 5 insight uret, en onemlilere odaklan
+- Her aksiyon icin platform belirt (google_ads veya meta_ads)
 
-Çıktı formatı:
+Cikti formati (strict JSON):
 {
     "insights": [
         {
-            "type": "performance|optimization|alert|opportunity|anomaly",
-            "priority": "low|medium|high|critical",
-            "title": "Kısa başlık",
-            "summary": "1-2 cümle özet",
-            "detailed_analysis": "Detaylı analiz",
+            "insight_type": "performance|optimization|alert|opportunity|anomaly",
+            "severity": "low|medium|high|critical",
+            "category": "budget|targeting|creative|bidding|general",
+            "platform": "google_ads|meta_ads|null",
+            "entity_type": "campaign|account|org",
+            "entity_id": "kampanya_id veya null",
+            "title": "Kisa baslik (max 100 karakter)",
+            "summary": "1-2 cumle ozet",
+            "detailed_analysis": "Detayli analiz (3-5 cumle)",
             "actions": [
                 {
-                    "title": "Aksiyon başlığı",
-                    "description": "Ne yapılmalı",
-                    "action_type": "pause_campaign|increase_budget|decrease_budget|optimize_targeting",
+                    "action_type": "pause_campaign|increase_budget|decrease_budget|optimize_targeting|adjust_bidding|review_creative",
+                    "platform": "google_ads|meta_ads",
+                    "title": "Aksiyon basligi",
+                    "description": "Ne yapilmali, detayli aciklama",
+                    "rationale": "Neden bu aksiyon oneriliyor",
                     "expected_impact": "Beklenen etki"
                 }
             ]
@@ -62,7 +71,7 @@ Kurallar:
 def generate_daily_insights():
     """
     Generate AI insights for all organizations.
-    
+
     Scheduled to run daily at 7 AM.
     """
     import asyncio
@@ -72,16 +81,16 @@ def generate_daily_insights():
 async def _generate_daily_insights_async():
     """Async implementation of generate_daily_insights."""
     supabase = get_supabase_service()
-    
+
     # Get all active organizations
     result = supabase.client.table("organizations") \
         .select("id") \
         .eq("is_active", True) \
         .execute()
-    
+
     orgs = result.data or []
     logger.info(f"Generating insights for {len(orgs)} organizations")
-    
+
     for org in orgs:
         try:
             await generate_org_insights(org["id"])
@@ -89,122 +98,99 @@ async def _generate_daily_insights_async():
             logger.error(f"Failed to generate insights for org {org['id']}: {e}")
 
 
-async def generate_org_insights(org_id: str):
-    """Generate insights for a specific organization."""
+async def generate_org_insights(org_id: str) -> list[dict]:
+    """
+    Generate insights for a specific organization using campaign-level data.
+
+    Returns list of created insight dicts.
+    """
     from openai import AsyncOpenAI
-    
+    from app.services.insight_data_collector import InsightDataCollector
+
     supabase = get_supabase_service()
-    
-    # Get metrics for last 7 days and previous 7 days
-    today = date.today()
-    week_ago = today - timedelta(days=7)
-    two_weeks_ago = today - timedelta(days=14)
-    
-    # Get connected accounts
-    accounts = await supabase.get_connected_accounts(org_id)
-    if not accounts:
-        logger.info(f"No active accounts for org {org_id}")
-        return
-    
-    # Get current period metrics
-    current_metrics = await supabase.get_daily_metrics(
-        org_id=org_id,
-        date_from=week_ago.isoformat(),
-        date_to=today.isoformat(),
-    )
-    
-    # Get previous period metrics
-    previous_metrics = await supabase.get_daily_metrics(
-        org_id=org_id,
-        date_from=two_weeks_ago.isoformat(),
-        date_to=week_ago.isoformat(),
-    )
-    
-    if not current_metrics:
-        logger.info(f"No metrics for org {org_id}")
-        return
-    
-    # Aggregate metrics
-    def aggregate_metrics(metrics_list):
-        return {
-            "impressions": sum(m.get("impressions", 0) for m in metrics_list),
-            "clicks": sum(m.get("clicks", 0) for m in metrics_list),
-            "spend": sum(m.get("spend_micros", 0) for m in metrics_list) / 1_000_000,
-            "conversions": sum(float(m.get("conversions", 0)) for m in metrics_list),
-            "conversion_value": sum(m.get("conversion_value_micros", 0) for m in metrics_list) / 1_000_000,
-        }
-    
-    current_agg = aggregate_metrics(current_metrics)
-    previous_agg = aggregate_metrics(previous_metrics)
-    
-    # Calculate changes
-    def calc_change(current, previous):
-        if previous == 0:
-            return None
-        return round((current - previous) / previous * 100, 2)
-    
-    metrics_context = {
-        "period": f"{week_ago.isoformat()} - {today.isoformat()}",
-        "comparison_period": f"{two_weeks_ago.isoformat()} - {week_ago.isoformat()}",
-        "current": current_agg,
-        "previous": previous_agg,
-        "changes": {
-            "impressions_change": calc_change(current_agg["impressions"], previous_agg["impressions"]),
-            "clicks_change": calc_change(current_agg["clicks"], previous_agg["clicks"]),
-            "spend_change": calc_change(current_agg["spend"], previous_agg["spend"]),
-            "conversions_change": calc_change(current_agg["conversions"], previous_agg["conversions"]),
-        },
-        "accounts": len(accounts),
-    }
-    
+    collector = InsightDataCollector(supabase)
+
+    # Collect rich campaign-level data
+    org_data = await collector.collect_org_data(org_id)
+
+    if not org_data.get("has_data"):
+        logger.info(f"No data to analyze for org {org_id}")
+        return []
+
+    # Build context for AI
+    metrics_context = json.dumps(org_data, ensure_ascii=False, default=str)
+
+    # Check OpenAI API key
+    if not settings.openai_api_key:
+        logger.warning("OpenAI API key not configured, skipping insight generation")
+        return []
+
     # Call OpenAI
     try:
         client = AsyncOpenAI(api_key=settings.openai_api_key)
-        
+
         response = await client.chat.completions.create(
             model=settings.openai_model,
             messages=[
                 {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(metrics_context, ensure_ascii=False)},
+                {"role": "user", "content": metrics_context},
             ],
             response_format={"type": "json_object"},
             temperature=0.3,
         )
-        
+
         result = json.loads(response.choices[0].message.content)
         insights = result.get("insights", [])
-        
-        # Save insights to database
+
+        created_insights = []
+
+        # Save insights to database with CORRECT column names
         for insight_data in insights:
-            insight = await supabase.create_insight({
-                "org_id": org_id,
-                "type": insight_data.get("type", "performance"),
-                "priority": insight_data.get("priority", "medium"),
-                "title": insight_data.get("title"),
-                "summary": insight_data.get("summary"),
-                "detailed_analysis": insight_data.get("detailed_analysis"),
-                "ai_model": settings.openai_model,
-                "ai_confidence": 0.8,
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "metrics_snapshot": metrics_context,
-                "comparison_period": "last_7_days_vs_previous",
-            })
-            
-            # Save recommended actions
-            for action_data in insight_data.get("actions", []):
-                supabase.client.table("recommended_actions").insert({
-                    "insight_id": insight["id"],
+            try:
+                insight = await supabase.create_insight({
                     "org_id": org_id,
-                    "title": action_data.get("title"),
-                    "description": action_data.get("description"),
-                    "action_type": action_data.get("action_type"),
-                    "expected_impact": action_data.get("expected_impact"),
-                    "status": "pending",
-                }).execute()
-        
-        logger.info(f"Generated {len(insights)} insights for org {org_id}")
-        
+                    "insight_type": insight_data.get("insight_type", "performance"),
+                    "severity": insight_data.get("severity", "medium"),
+                    "category": insight_data.get("category"),
+                    "platform": insight_data.get("platform"),
+                    "entity_type": insight_data.get("entity_type", "org"),
+                    "entity_id": insight_data.get("entity_id"),
+                    "title": insight_data.get("title", "Untitled Insight"),
+                    "summary": insight_data.get("summary", ""),
+                    "detailed_analysis": insight_data.get("detailed_analysis"),
+                    "ai_model": settings.openai_model,
+                    "ai_confidence": 0.8,
+                    "metric_data": org_data.get("org_totals"),
+                    "comparison_period": org_data.get("period"),
+                })
+
+                created_insights.append(insight)
+
+                # Save recommended actions with CORRECT column names
+                for action_data in insight_data.get("actions", []):
+                    try:
+                        supabase.client.table("recommended_actions").insert({
+                            "insight_id": insight["id"],
+                            "org_id": org_id,
+                            "action_type": action_data.get("action_type", "review_creative"),
+                            "platform": action_data.get("platform", insight_data.get("platform", "google_ads")),
+                            "title": action_data.get("title", ""),
+                            "description": action_data.get("description", "Detay yok"),
+                            "rationale": action_data.get("rationale"),
+                            "expected_impact": action_data.get("expected_impact"),
+                            "is_executable": False,
+                            "priority": 50,
+                            "status": "pending",
+                        }).execute()
+                    except Exception as ae:
+                        logger.error(f"Failed to save action for insight {insight['id']}: {ae}")
+
+            except Exception as ie:
+                logger.error(f"Failed to save insight: {ie}")
+
+        logger.info(f"Generated {len(created_insights)} insights for org {org_id}")
+        return created_insights
+
     except Exception as e:
         logger.error(f"OpenAI API error for org {org_id}: {e}")
         raise
@@ -214,7 +200,7 @@ async def generate_org_insights(org_id: str):
 def send_daily_digests():
     """
     Send daily digest emails/WhatsApp.
-    
+
     Scheduled to run daily at 9 AM.
     """
     import asyncio
@@ -224,16 +210,16 @@ def send_daily_digests():
 async def _send_daily_digests_async():
     """Async implementation of send_daily_digests."""
     supabase = get_supabase_service()
-    
+
     # Get all organizations
     result = supabase.client.table("organizations") \
         .select("id") \
         .eq("is_active", True) \
         .execute()
-    
+
     orgs = result.data or []
     logger.info(f"Generating digests for {len(orgs)} organizations")
-    
+
     for org in orgs:
         try:
             await generate_daily_digest(org["id"])
@@ -244,47 +230,51 @@ async def _send_daily_digests_async():
 async def generate_daily_digest(org_id: str):
     """Generate and send daily digest for an organization."""
     from openai import AsyncOpenAI
-    
+
     supabase = get_supabase_service()
-    
+
     today = date.today()
     yesterday = today - timedelta(days=1)
-    
+
     # Get yesterday's metrics
     metrics = await supabase.get_daily_metrics(
         org_id=org_id,
         date_from=yesterday.isoformat(),
         date_to=yesterday.isoformat(),
     )
-    
+
     # Get today's insights
     insights = await supabase.get_insights(org_id=org_id, limit=5)
-    
-    # Aggregate metrics
-    total_impressions = sum(m.get("impressions", 0) for m in metrics)
-    total_clicks = sum(m.get("clicks", 0) for m in metrics)
-    total_spend = sum(m.get("spend_micros", 0) for m in metrics) / 1_000_000
-    total_conversions = sum(float(m.get("conversions", 0)) for m in metrics)
-    
+
+    # Aggregate metrics (use correct column name: spend, not spend_micros)
+    total_impressions = sum(int(m.get("impressions", 0) or 0) for m in metrics)
+    total_clicks = sum(int(m.get("clicks", 0) or 0) for m in metrics)
+    total_spend = sum(float(m.get("spend", 0) or 0) for m in metrics)
+    total_conversions = sum(float(m.get("conversions", 0) or 0) for m in metrics)
+
+    if not settings.openai_api_key:
+        logger.warning("OpenAI API key not configured, skipping digest generation")
+        return
+
     # Generate summary with AI
     try:
         client = AsyncOpenAI(api_key=settings.openai_api_key)
-        
+
         digest_prompt = f"""
-        Aşağıdaki verilerle kısa bir günlük özet yaz (maksimum 3-4 cümle):
-        
+        Asagidaki verilerle kisa bir gunluk ozet yaz (maksimum 3-4 cumle):
+
         Tarih: {yesterday.isoformat()}
         Impressions: {total_impressions:,}
         Clicks: {total_clicks:,}
-        Harcama: ₺{total_spend:,.2f}
-        Dönüşüm: {total_conversions:.1f}
-        
-        Önemli insight'lar:
+        Harcama: {total_spend:,.2f} TRY
+        Donusum: {total_conversions:.1f}
+
+        Onemli insight'lar:
         {json.dumps([i.get("title") for i in insights], ensure_ascii=False)}
-        
-        Tarz: Dostça, profesyonel, kısa.
+
+        Tarz: Dostca, profesyonel, kisa.
         """
-        
+
         response = await client.chat.completions.create(
             model=settings.openai_model,
             messages=[
@@ -293,27 +283,26 @@ async def generate_daily_digest(org_id: str):
             temperature=0.5,
             max_tokens=300,
         )
-        
+
         summary = response.choices[0].message.content
-        
+
         # Save digest
         supabase.client.table("daily_digests").insert({
             "org_id": org_id,
             "digest_date": yesterday.isoformat(),
-            "title": f"Günlük Özet - {yesterday.strftime('%d %B %Y')}",
+            "title": f"Gunluk Ozet - {yesterday.strftime('%d %B %Y')}",
             "summary": summary,
-            "total_spend_micros": int(total_spend * 1_000_000),
+            "total_spend": total_spend,
             "total_impressions": total_impressions,
             "total_clicks": total_clicks,
             "total_conversions": total_conversions,
             "insight_ids": [i.get("id") for i in insights],
             "ai_model": settings.openai_model,
-            "tokens_used": response.usage.total_tokens,
         }).execute()
-        
+
         # TODO: Send via email/WhatsApp based on user preferences
         logger.info(f"Generated digest for org {org_id}")
-        
+
     except Exception as e:
         logger.error(f"Failed to generate digest for org {org_id}: {e}")
         raise

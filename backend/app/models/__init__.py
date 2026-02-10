@@ -35,7 +35,7 @@ from app.models.metrics import (
 )
 from app.models.insight import (
     InsightType,
-    InsightPriority,
+    InsightSeverity,
     ActionStatus,
     InsightResponse,
     InsightList,
@@ -89,7 +89,7 @@ __all__ = [
     "MetricsByPlatform",
     # Insights
     "InsightType",
-    "InsightPriority",
+    "InsightSeverity",
     "ActionStatus",
     "InsightResponse",
     "InsightList",
