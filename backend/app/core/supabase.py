@@ -305,6 +305,48 @@ class SupabaseService:
             .execute()
         return result.data[0] if result.data else None
 
+    # ===========================================
+    # CAMPAIGN DATA FOR INSIGHTS
+    # ===========================================
+
+    async def get_active_campaigns_for_org(self, org_id: str) -> list[dict]:
+        """Get all active campaigns with their account info for an org."""
+        result = self._client.table("campaigns") \
+            .select("*, connected_accounts!inner(id, platform, account_name, org_id)") \
+            .eq("connected_accounts.org_id", org_id) \
+            .eq("connected_accounts.is_active", True) \
+            .eq("status", "enabled") \
+            .execute()
+        return result.data or []
+
+    async def get_campaign_metrics_for_org(
+        self,
+        org_id: str,
+        date_from: str,
+        date_to: str,
+    ) -> list[dict]:
+        """Get daily metrics at campaign level for an org."""
+        result = self._client.table("daily_metrics") \
+            .select("*, connected_accounts!inner(org_id, platform, account_name, is_active)") \
+            .eq("connected_accounts.org_id", org_id) \
+            .eq("connected_accounts.is_active", True) \
+            .eq("entity_type", "campaign") \
+            .gte("date", date_from) \
+            .lte("date", date_to) \
+            .order("date", desc=True) \
+            .execute()
+        return result.data or []
+
+    async def get_latest_insight_time(self, org_id: str) -> Optional[str]:
+        """Get the created_at of the most recent insight for rate limiting."""
+        result = self._client.table("insights") \
+            .select("created_at") \
+            .eq("org_id", org_id) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+        return result.data[0]["created_at"] if result.data else None
+
 
 # Convenience function for dependency injection
 def get_supabase_service() -> SupabaseService:
