@@ -4,8 +4,12 @@ import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlatformIcon, getPlatformLabel } from "@/components/accounts/platform-icon";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useAuthStore } from "@/store/authStore";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const platforms = [
     {
@@ -25,17 +29,50 @@ const platforms = [
 ];
 
 export default function ConnectAccountPage() {
-    const handleConnect = async (platform: string) => {
-        // TODO: Initiate OAuth flow
-        const response = await fetch(`/api/v1/auth/${platform}/initiate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ redirect_uri: window.location.origin + "/accounts" }),
-        });
+    const { user, hydrate } = useAuthStore();
+    const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
 
-        if (response.ok) {
-            const data = await response.json();
-            window.location.href = data.authorization_url;
+    useEffect(() => {
+        hydrate();
+    }, [hydrate]);
+
+    const handleConnect = async (platform: string) => {
+        if (!user?.id) {
+            console.error("User not logged in");
+            return;
+        }
+
+        setLoadingPlatform(platform);
+
+        const redirectUri = `${window.location.origin}/accounts`;
+
+        if (platform === "google_ads") {
+            // Google Ads uses GET redirect (same as dashboard ConnectGoogleAds)
+            const authUrl = `${API_URL}/api/v1/auth/google/authorize?user_id=${user.id}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+            window.location.href = authUrl;
+        } else if (platform === "meta_ads") {
+            // Meta Ads uses POST /meta/initiate
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/v1/auth/meta/initiate?user_id=${user.id}`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ redirect_uri: redirectUri }),
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    window.location.href = data.authorization_url;
+                } else {
+                    console.error("Meta OAuth initiation failed");
+                    setLoadingPlatform(null);
+                }
+            } catch (error) {
+                console.error("Meta OAuth error:", error);
+                setLoadingPlatform(null);
+            }
         }
     };
 
@@ -88,9 +125,14 @@ export default function ConnectAccountPage() {
                                 <Button
                                     className="w-full"
                                     onClick={() => handleConnect(p.id)}
+                                    disabled={loadingPlatform === p.id}
                                 >
-                                    {p.name} Bağla
-                                    <ExternalLink size={16} />
+                                    {loadingPlatform === p.id ? (
+                                        <Loader2 size={16} className="animate-spin mr-2" />
+                                    ) : (
+                                        <ExternalLink size={16} className="mr-2" />
+                                    )}
+                                    {loadingPlatform === p.id ? "Yönlendiriliyor..." : `${p.name} Bağla`}
                                 </Button>
                             </CardContent>
                         </Card>

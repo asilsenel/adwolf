@@ -3,6 +3,7 @@ Ad Platform MVP - Chat Service
 
 Core service for AI Chat Assistant using OpenAI Assistants API.
 Handles thread management, message streaming, and tool calling.
+Includes LLM pre-processing for query enrichment and DB context fallback.
 """
 
 import json
@@ -18,6 +19,133 @@ from app.core.security import decrypt_token
 from app.services.insight_data_collector import InsightDataCollector
 
 logger = logging.getLogger(__name__)
+
+
+# ===========================================
+# QUERY ENRICHMENT PROMPT
+# ===========================================
+
+QUERY_ENRICHMENT_PROMPT = """Sen bir reklam platformu AI asistanının ön-işleyicisisin.
+Kullanıcının mesajını analiz et ve asistanın doğru tool'ları çağırabilmesi için mesajı zenginleştir.
+
+Mevcut tool'lar:
+1. get_account_summary - Bağlı hesapları listeler (platform filtresi: google_ads, meta_ads)
+2. get_campaign_list - Bir hesabın kampanyalarını listeler (account_id gerekir)
+3. get_performance_metrics - Tarih aralığında performans metrikleri (date_from, date_to gerekir)
+4. get_performance_comparison - Haftalık/aylık karşılaştırma (period: weekly/monthly)
+5. get_recent_insights - AI insight'larını getirir
+6. execute_gaql_query - Google Ads Query Language sorgusu (account_id ve query gerekir)
+
+Bugünün tarihi: {today}
+
+Kurallar:
+- Kullanıcının sorusunu anla ve hangi tool'un çağrılması gerektiğini belirle
+- Eğer tarih belirtilmemişse, son 7 gün veya son 30 gün gibi makul bir aralık öner
+- "Performansım nasıl?" gibi genel sorularda birden fazla tool çağrısı gerekebilir
+- Google Ads'e özel sorularda (anahtar kelimeler, reklam grupları, reklam metinleri, kalite puanı, açılış sayfası, hedefleme, teklif stratejisi vb.) execute_gaql_query tool'unu kullan
+- Mesajı Türkçe olarak zenginleştir
+- Sadece zenginleştirilmiş mesajı döndür, başka açıklama ekleme
+- Eğer mesaj zaten yeterince açıksa, olduğu gibi döndür
+- ÖNEMLİ: Hesap ID'lerini mutlaka mesaja ekle. Kullanıcıdan hesap seçmesini bekleme, mevcut hesapları doğrudan kullan.
+- Birden fazla hesap varsa tümünü dahil et. Tek hesap varsa direkt onu kullan.
+
+Aşağıda kullanıcının mevcut hesap bilgileri var:
+{account_context}
+
+Kullanıcının orijinal mesajı: {message}
+
+Zenginleştirilmiş mesaj (hesap ID'lerini dahil et):"""
+
+
+# ===========================================
+# GAQL QUERY GENERATION PROMPT
+# ===========================================
+
+GAQL_GENERATION_PROMPT = """Sen bir Google Ads Query Language (GAQL) uzmanısın.
+Kullanıcının doğal dildeki sorusuna uygun bir GAQL SELECT sorgusu oluştur.
+
+Bugünün tarihi: {today}
+
+Kullanılabilir GAQL kaynakları ve alanları:
+
+1. campaign (Kampanya):
+   - campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type
+   - campaign_budget.amount_micros
+   - metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value
+   - metrics.ctr, metrics.average_cpc, metrics.average_cpm, metrics.cost_per_conversion
+   - segments.date
+
+2. ad_group (Reklam Grubu):
+   - ad_group.id, ad_group.name, ad_group.status, ad_group.type
+   - campaign.id, campaign.name
+   - metrics.* (aynı metrikler)
+   - segments.date
+
+3. ad_group_ad (Reklam):
+   - ad_group_ad.ad.id, ad_group_ad.ad.type, ad_group_ad.status
+   - ad_group_ad.ad.expanded_text_ad.headline_part1, ad_group_ad.ad.expanded_text_ad.headline_part2
+   - ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions
+   - ad_group_ad.ad.final_urls
+   - metrics.*
+   - segments.date
+
+4. keyword_view (Anahtar Kelime):
+   - ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type
+   - ad_group_criterion.quality_info.quality_score
+   - ad_group_criterion.status
+   - ad_group.name, campaign.name
+   - metrics.*
+   - segments.date
+
+5. search_term_view (Arama Terimleri):
+   - search_term_view.search_term
+   - campaign.name, ad_group.name
+   - metrics.*
+   - segments.date
+
+6. customer (Hesap):
+   - customer.id, customer.descriptive_name, customer.currency_code
+   - metrics.*
+   - segments.date
+
+7. geographic_view (Coğrafi):
+   - geographic_view.country_criterion_id
+   - campaign.name
+   - metrics.*
+   - segments.date
+
+8. gender_view, age_range_view (Demografi):
+   - ad_group_criterion.gender.type, ad_group_criterion.age_range.type
+   - metrics.*
+
+9. landing_page_view (Açılış Sayfası):
+   - landing_page_view.unexpanded_final_url
+   - metrics.*
+   - segments.date
+
+GAQL Kuralları:
+- Sadece SELECT sorguları yaz
+- WHERE ile filtreleme yap (tarih aralığı, durum vb.)
+- ORDER BY ile sıralama ekle (en çok harcama, en iyi CTR vb.)
+- LIMIT ekle (varsayılan: 20)
+- Tarih formatı: 'YYYY-MM-DD'
+- Enum değerleri: ENABLED, PAUSED, REMOVED
+- cost_micros 1,000,000'a bölünerek gerçek para birimine çevrilir
+- Tarih belirtilmemişse son 30 günü kullan
+
+Örnekler:
+- "En çok harcama yapan kampanyalar" →
+  SELECT campaign.name, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.ctr FROM campaign WHERE segments.date DURING LAST_30_DAYS AND campaign.status = 'ENABLED' ORDER BY metrics.cost_micros DESC LIMIT 10
+
+- "Anahtar kelime performansı" →
+  SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr, ad_group_criterion.quality_info.quality_score FROM keyword_view WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC LIMIT 20
+
+- "Kalite puanı düşük anahtar kelimeler" →
+  SELECT ad_group_criterion.keyword.text, ad_group_criterion.quality_info.quality_score, metrics.impressions, metrics.clicks, metrics.cost_micros, campaign.name FROM keyword_view WHERE segments.date DURING LAST_30_DAYS AND ad_group_criterion.status = 'ENABLED' ORDER BY ad_group_criterion.quality_info.quality_score ASC LIMIT 20
+
+Kullanıcının sorusu: {question}
+
+Sadece GAQL sorgusunu döndür, başka açıklama ekleme. Eğer soru GAQL ile cevaplanamıyorsa "NOT_APPLICABLE" döndür."""
 
 
 # ===========================================
@@ -41,6 +169,13 @@ SYSTEM_PROMPT = """Sen AdWolf platformunun AI asistanısın. Deneyimli bir perfo
 - Kullanıcının sorularını doğrudan cevapla, gereksiz bilgi verme
 - Tool'ları kullanarak gerçek veriye eriş, tahmin yapma
 - Eğer veri yoksa veya yetersizse, bunu açıkça belirt
+
+## ÖNEMLİ - Hesap Seçimi:
+- Kullanıcıdan hesap seçmesini İSTEME. Mevcut hesapları otomatik olarak kullan.
+- Mesajda hangi hesap bilgisi verilmişse onu kullan.
+- Birden fazla hesap varsa, TÜMÜ için verileri getir ve birlikte sun.
+- Tek hesap varsa, doğrudan o hesabı kullan.
+- Hesap bilgisi zenginleştirilmiş mesajda verilmiştir, oradan account_id'yi al.
 
 ## Metrik Bilgisi:
 - **CTR** (Click-Through Rate): Tıklama oranı. İyi: >2%, Kötü: <0.5%
@@ -166,13 +301,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "execute_gaql_query",
-            "description": "Google Ads Query Language (GAQL) sorgusu çalıştırır. Sadece SELECT sorguları kabul edilir. Gelişmiş analiz için kullanılır.",
+            "description": "Google Ads verileri için sorgu çalıştırır. Doğal dilde soru veya GAQL sorgusu kabul eder. Anahtar kelime performansı, reklam grupları, reklam metinleri, kalite puanı, arama terimleri, coğrafi veriler, demografi, açılış sayfaları gibi detaylı Google Ads verilerine erişim sağlar. Diğer tool'larla cevaplanamayan Google Ads sorularında bu tool'u kullan.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "GAQL sorgusu (sadece SELECT)"
+                        "description": "Doğal dilde soru (örn: 'en çok harcama yapan anahtar kelimeler') veya GAQL SELECT sorgusu"
                     },
                     "account_id": {
                         "type": "string",
@@ -200,8 +335,20 @@ class ChatService:
         self.assistant_id = settings.openai_assistant_id
 
     async def ensure_assistant(self) -> str:
-        """Get or create the OpenAI Assistant with tools."""
+        """Get or create the OpenAI Assistant with tools. Updates existing assistant's config."""
         if self.assistant_id:
+            # Update existing assistant with latest instructions and tools
+            if not getattr(self, '_assistant_updated', False):
+                try:
+                    await self.openai_client.beta.assistants.update(
+                        assistant_id=self.assistant_id,
+                        instructions=SYSTEM_PROMPT,
+                        tools=TOOL_DEFINITIONS,
+                    )
+                    self._assistant_updated = True
+                    logger.info(f"Updated OpenAI Assistant: {self.assistant_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to update assistant, using existing: {e}")
             return self.assistant_id
 
         # Create assistant on-the-fly
@@ -213,11 +360,270 @@ class ChatService:
         )
 
         self.assistant_id = assistant.id
+        self._assistant_updated = True
         logger.info(f"Created OpenAI Assistant: {assistant.id}")
 
         # Optionally save to settings for reuse
         # (In production, set OPENAI_ASSISTANT_ID env var)
         return assistant.id
+
+    async def _enrich_query(self, message: str, org_id: str) -> str:
+        """
+        Pre-process user message with LLM to enrich it for better tool calling.
+        Adds account context and date hints so OpenAI assistant can call the right tools.
+        """
+        try:
+            # Get account context for enrichment
+            accounts = await self.supabase.get_connected_accounts(org_id)
+            self._cached_accounts = accounts  # Cache for GAQL generation
+            account_context = "Kullanıcının hesapları:\n"
+            if accounts:
+                for acc in accounts:
+                    account_context += (
+                        f"- {acc.get('account_name', 'Bilinmeyen')} "
+                        f"(ID: {acc['id']}, Platform: {acc['platform']}, "
+                        f"Durum: {acc.get('status', 'unknown')})\n"
+                    )
+            else:
+                account_context += "- Henüz bağlı hesap yok\n"
+
+            today = date.today().isoformat()
+
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": QUERY_ENRICHMENT_PROMPT.format(
+                            today=today,
+                            account_context=account_context,
+                            message=message,
+                        ),
+                    },
+                ],
+                temperature=0.3,
+                max_tokens=500,
+            )
+
+            enriched = response.choices[0].message.content.strip()
+            logger.info(f"Query enriched: '{message[:50]}' -> '{enriched[:80]}'")
+            return enriched
+
+        except Exception as e:
+            logger.warning(f"Query enrichment failed, using original: {e}")
+            return message
+
+    async def _generate_gaql_query(self, question: str) -> Optional[str]:
+        """
+        Generate a GAQL query from a natural language question using LLM.
+        Returns a valid GAQL SELECT query or None if not applicable.
+        """
+        try:
+            today = date.today().isoformat()
+
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": GAQL_GENERATION_PROMPT.format(
+                            today=today,
+                            question=question,
+                        ),
+                    },
+                ],
+                temperature=0.2,
+                max_tokens=500,
+            )
+
+            gaql = response.choices[0].message.content.strip()
+
+            # Check if LLM determined it's not a GAQL question
+            if gaql == "NOT_APPLICABLE" or not gaql.upper().startswith("SELECT"):
+                logger.info(f"GAQL not applicable for: '{question[:50]}'")
+                return None
+
+            logger.info(f"Generated GAQL: {gaql[:100]}")
+            return gaql
+
+        except Exception as e:
+            logger.warning(f"GAQL generation failed: {e}")
+            return None
+
+    async def _get_db_context_for_query(self, message: str, org_id: str) -> Optional[str]:
+        """
+        Fallback: Query database directly to provide context when tools return insufficient data.
+        Fetches relevant metrics, campaigns, and account data based on the user's question.
+        """
+        try:
+            context_parts = []
+            today = date.today()
+            week_ago = (today - timedelta(days=7)).isoformat()
+            month_ago = (today - timedelta(days=30)).isoformat()
+            today_str = today.isoformat()
+
+            # Always fetch accounts
+            accounts = await self.supabase.get_connected_accounts(org_id)
+            if accounts:
+                context_parts.append(f"Bağlı hesap sayısı: {len(accounts)}")
+                for acc in accounts:
+                    context_parts.append(
+                        f"  - {acc.get('account_name', 'Bilinmeyen')} "
+                        f"({acc['platform']}, ID: {acc['id']})"
+                    )
+
+            # Fetch recent metrics (last 7 days)
+            metrics = await self.supabase.get_daily_metrics(
+                org_id=org_id,
+                date_from=week_ago,
+                date_to=today_str,
+            )
+            if metrics:
+                total_spend = sum(float(m.get("spend", 0) or 0) for m in metrics)
+                total_clicks = sum(int(m.get("clicks", 0) or 0) for m in metrics)
+                total_impressions = sum(int(m.get("impressions", 0) or 0) for m in metrics)
+                total_conversions = sum(float(m.get("conversions", 0) or 0) for m in metrics)
+                ctr = round(total_clicks / total_impressions * 100, 2) if total_impressions > 0 else 0
+                cpc = round(total_spend / total_clicks, 2) if total_clicks > 0 else 0
+
+                context_parts.append(f"\nSon 7 gün metrikleri ({week_ago} - {today_str}):")
+                context_parts.append(f"  Toplam harcama: {total_spend:.2f} TRY")
+                context_parts.append(f"  Tıklama: {total_clicks:,}")
+                context_parts.append(f"  Gösterim: {total_impressions:,}")
+                context_parts.append(f"  Dönüşüm: {total_conversions:.0f}")
+                context_parts.append(f"  CTR: %{ctr}")
+                context_parts.append(f"  CPC: {cpc:.2f} TRY")
+
+            # Fetch last 30 days for comparison
+            metrics_month = await self.supabase.get_daily_metrics(
+                org_id=org_id,
+                date_from=month_ago,
+                date_to=today_str,
+            )
+            if metrics_month:
+                total_spend_month = sum(float(m.get("spend", 0) or 0) for m in metrics_month)
+                total_clicks_month = sum(int(m.get("clicks", 0) or 0) for m in metrics_month)
+                context_parts.append(f"\nSon 30 gün: {total_spend_month:.2f} TRY harcama, {total_clicks_month:,} tıklama")
+
+            # Fetch campaigns with per-campaign metrics
+            if accounts:
+                all_campaigns = []
+                for acc in accounts[:5]:  # Limit to first 5 accounts
+                    campaigns = await self.supabase.get_campaigns(acc["id"])
+                    all_campaigns.extend(campaigns)
+
+                if all_campaigns:
+                    active = [c for c in all_campaigns if c.get("status") == "enabled"]
+                    context_parts.append(f"\nToplam kampanya: {len(all_campaigns)} ({len(active)} aktif)")
+                    for c in active[:10]:  # Show top 10
+                        budget = c.get("budget_amount")
+                        budget_str = f", Bütçe: {budget}" if budget else ""
+                        context_parts.append(f"  - {c['name']} ({c.get('status', '?')}{budget_str})")
+
+                    # Add per-campaign metrics for active campaigns
+                    if metrics_month and active:
+                        context_parts.append("\nKampanya bazlı son 30 gün metrikleri:")
+                        campaign_metrics = {}
+                        for m in metrics_month:
+                            cid = m.get("campaign_id")
+                            if cid:
+                                if cid not in campaign_metrics:
+                                    campaign_metrics[cid] = {
+                                        "name": m.get("campaign_name", "?"),
+                                        "spend": 0, "clicks": 0, "impressions": 0, "conversions": 0,
+                                    }
+                                campaign_metrics[cid]["spend"] += float(m.get("spend", 0) or 0)
+                                campaign_metrics[cid]["clicks"] += int(m.get("clicks", 0) or 0)
+                                campaign_metrics[cid]["impressions"] += int(m.get("impressions", 0) or 0)
+                                campaign_metrics[cid]["conversions"] += float(m.get("conversions", 0) or 0)
+
+                        sorted_campaigns = sorted(campaign_metrics.values(), key=lambda x: x["spend"], reverse=True)
+                        for cm in sorted_campaigns[:15]:
+                            cm_ctr = round(cm["clicks"] / cm["impressions"] * 100, 2) if cm["impressions"] > 0 else 0
+                            cm_cpc = round(cm["spend"] / cm["clicks"], 2) if cm["clicks"] > 0 else 0
+                            context_parts.append(
+                                f"  - {cm['name']}: {cm['spend']:.2f} TRY harcama, "
+                                f"{cm['clicks']:,} tıklama, CTR: %{cm_ctr}, CPC: {cm_cpc:.2f} TRY"
+                            )
+
+            if context_parts:
+                return "\n".join(context_parts)
+            return None
+
+        except Exception as e:
+            logger.warning(f"DB context fetch failed: {e}")
+            return None
+
+    async def _db_search_and_interpret(self, message: str, org_id: str) -> Optional[str]:
+        """
+        Advanced fallback: Search database for relevant data and use LLM to interpret results.
+        Used when standard tools and GAQL queries don't provide sufficient answers.
+        """
+        try:
+            db_context = await self._get_db_context_for_query(message, org_id)
+            if not db_context:
+                return None
+
+            # Use LLM to interpret DB data in context of the user's question
+            response = await self.openai_client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT + "\n\nAşağıda kullanıcının veritabanından çekilen güncel verileri var. "
+                        "Bu verileri kullanarak soruyu mümkün olduğunca detaylı cevapla. "
+                        "Eğer sorunun cevabı veriler arasında yoksa, hangi verilerin mevcut olduğunu ve "
+                        "sorunun nasıl cevaplanabileceğini açıkla.\n\n"
+                        "VERİTABANI VERİLERİ:\n" + db_context,
+                    },
+                    {"role": "user", "content": message},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"DB search and interpret failed: {e}")
+            return None
+
+    async def _try_auto_gaql(self, message: str, org_id: str) -> Optional[str]:
+        """
+        Try to auto-generate and execute a GAQL query for the user's question.
+        Returns formatted result string or None if not applicable/failed.
+        """
+        try:
+            # Generate GAQL from natural language
+            gaql = await self._generate_gaql_query(message)
+            if not gaql:
+                return None
+
+            # Find first Google Ads account
+            accounts = getattr(self, '_cached_accounts', None)
+            if not accounts:
+                accounts = await self.supabase.get_connected_accounts(org_id)
+
+            google_accounts = [a for a in (accounts or []) if a.get("platform") == "google_ads"]
+            if not google_accounts:
+                return None
+
+            # Try executing on first Google Ads account
+            account_id = google_accounts[0]["id"]
+            result = await self._tool_gaql_query(org_id, gaql, account_id)
+
+            # Check if result has data
+            try:
+                parsed = json.loads(result)
+                if parsed.get("error") or parsed.get("row_count", 0) == 0:
+                    return None
+                return result
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        except Exception as e:
+            logger.warning(f"Auto-GAQL failed: {e}")
+            return None
 
     async def send_message_stream(
         self,
@@ -229,9 +635,15 @@ class ChatService:
         """
         Send a message and stream the response via SSE.
 
+        Pre-processes the user message with LLM enrichment for better tool calling.
+        Falls back to direct DB context when tools return insufficient data.
+
         Yields SSE-formatted strings: "data: {json}\n\n"
         """
         assistant_id = await self.ensure_assistant()
+
+        # Step 1: Enrich user query with LLM pre-processing
+        enriched_message = await self._enrich_query(message, org_id)
 
         # Get or create thread
         db_thread = None
@@ -263,18 +675,18 @@ class ChatService:
 
         db_thread_id = db_thread["id"]
 
-        # Save user message to DB
+        # Save original user message to DB (not the enriched version)
         await self.supabase.create_chat_message({
             "thread_id": db_thread_id,
             "role": "user",
             "content": message,
         })
 
-        # Add message to OpenAI thread
+        # Add enriched message to OpenAI thread for better tool calling
         await self.openai_client.beta.threads.messages.create(
             thread_id=openai_thread_id,
             role="user",
-            content=message,
+            content=enriched_message,
         )
 
         # Create and stream the run
@@ -310,6 +722,7 @@ class ChatService:
                         run = event.data
                         if run.required_action and run.required_action.type == "submit_tool_outputs":
                             tool_outputs = []
+                            any_empty_result = False
 
                             for tool_call in run.required_action.submit_tool_outputs.tool_calls:
                                 fn_name = tool_call.function.name
@@ -325,9 +738,44 @@ class ChatService:
                                         "args": fn_args,
                                         "result_preview": str(result)[:200],
                                     })
+
+                                    # Check if result is empty/minimal
+                                    try:
+                                        parsed = json.loads(result) if isinstance(result, str) else result
+                                        if isinstance(parsed, dict):
+                                            if parsed.get("error") or parsed.get("total", 1) == 0 or parsed.get("total_accounts", 1) == 0:
+                                                any_empty_result = True
+                                    except (json.JSONDecodeError, TypeError):
+                                        pass
+
                                 except Exception as e:
                                     logger.error(f"Tool execution error ({fn_name}): {e}")
                                     result = json.dumps({"error": str(e)}, ensure_ascii=False)
+                                    any_empty_result = True
+
+                                # If tool returned empty, try auto-GAQL then augment with DB context
+                                if any_empty_result:
+                                    # Try auto-GAQL for Google Ads questions
+                                    gaql_result = await self._try_auto_gaql(message, org_id)
+                                    if gaql_result:
+                                        if isinstance(result, str):
+                                            try:
+                                                result_dict = json.loads(result)
+                                                result_dict["_gaql_data"] = gaql_result
+                                                result = json.dumps(result_dict, ensure_ascii=False, default=str)
+                                            except (json.JSONDecodeError, TypeError):
+                                                result = result + f"\n\nGoogle Ads verisi:\n{gaql_result}"
+                                    else:
+                                        # Fall back to DB context
+                                        db_context = await self._get_db_context_for_query(message, org_id)
+                                        if db_context:
+                                            if isinstance(result, str):
+                                                try:
+                                                    result_dict = json.loads(result)
+                                                    result_dict["_db_context"] = db_context
+                                                    result = json.dumps(result_dict, ensure_ascii=False, default=str)
+                                                except (json.JSONDecodeError, TypeError):
+                                                    result = result + f"\n\nEk veritabanı bağlamı:\n{db_context}"
 
                                 tool_outputs.append({
                                     "tool_call_id": tool_call.id,
@@ -365,6 +813,18 @@ class ChatService:
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
             yield self._sse_event("error", content=f"Akış hatası: {str(e)}")
+
+        # Step 2: If no response or very short, try DB search + LLM interpretation fallback
+        if not full_response or len(full_response.strip()) < 10:
+            logger.info("Empty/short response from assistant, trying DB search + LLM fallback")
+
+            fallback_text = await self._db_search_and_interpret(message, org_id)
+            if fallback_text:
+                full_response = fallback_text
+                # Stream the fallback response
+                for i in range(0, len(fallback_text), 20):
+                    chunk = fallback_text[i:i + 20]
+                    yield self._sse_event("text_delta", content=chunk)
 
         # Save assistant message to DB
         if full_response:
@@ -564,12 +1024,24 @@ class ChatService:
         }, ensure_ascii=False, default=str)
 
     async def _tool_gaql_query(self, org_id: str, query: str, account_id: str) -> str:
-        """Execute a GAQL query against Google Ads API (SELECT only)."""
+        """Execute a GAQL query against Google Ads API (SELECT only).
+        If the query is natural language, auto-generate GAQL first."""
         from app.connectors.google_ads import GoogleAdsConnector
 
-        # Security: Only allow SELECT queries
+        original_query = query
+
+        # If query doesn't look like GAQL, try to generate it from natural language
         query_upper = query.strip().upper()
         if not query_upper.startswith("SELECT"):
+            generated_gaql = await self._generate_gaql_query(query)
+            if generated_gaql:
+                logger.info(f"Auto-generated GAQL from natural language: '{query[:50]}' -> '{generated_gaql[:80]}'")
+                query = generated_gaql
+            else:
+                return json.dumps({"error": "Bu soru GAQL sorgusu ile cevaplanamıyor. Lütfen daha spesifik bir soru sorun."})
+
+        # Security: Final check - only allow SELECT queries
+        if not query.strip().upper().startswith("SELECT"):
             return json.dumps({"error": "Güvenlik: Sadece SELECT sorguları kabul edilir"})
 
         # Verify account ownership
@@ -589,39 +1061,58 @@ class ChatService:
         except Exception as e:
             return json.dumps({"error": f"Token çözümleme hatası: {str(e)}"})
 
-        # Execute GAQL
-        try:
-            connector = GoogleAdsConnector(
-                access_token=access_token,
-                refresh_token=refresh_token or "",
-                customer_id=account.get("platform_account_id", ""),
-                login_customer_id=account.get("login_customer_id"),
-            )
+        # Execute GAQL (with retry on query error)
+        max_attempts = 2
+        last_error = None
 
-            client = connector._get_client()
-            ga_service = client.get_service("GoogleAdsService")
+        for attempt in range(max_attempts):
+            try:
+                connector = GoogleAdsConnector(
+                    access_token=access_token,
+                    refresh_token=refresh_token or "",
+                    customer_id=account.get("platform_account_id", ""),
+                    login_customer_id=account.get("login_customer_id"),
+                )
 
-            customer_id = account.get("platform_account_id", "").replace("-", "")
-            response = ga_service.search(customer_id=customer_id, query=query)
+                client = connector._get_client()
+                ga_service = client.get_service("GoogleAdsService")
 
-            # Convert protobuf to dict - limit results
-            from google.protobuf import json_format
+                customer_id = account.get("platform_account_id", "").replace("-", "")
+                response = ga_service.search(customer_id=customer_id, query=query)
 
-            rows = []
-            for i, row in enumerate(response):
-                if i >= 50:  # Limit to 50 rows
-                    break
-                row_dict = json_format.MessageToDict(row._pb)
-                rows.append(row_dict)
+                # Convert protobuf to dict - limit results
+                from google.protobuf import json_format
 
-            return json.dumps({
-                "query": query,
-                "row_count": len(rows),
-                "rows": rows,
-            }, ensure_ascii=False, default=str)
+                rows = []
+                for i, row in enumerate(response):
+                    if i >= 50:  # Limit to 50 rows
+                        break
+                    row_dict = json_format.MessageToDict(row._pb)
+                    rows.append(row_dict)
 
-        except Exception as e:
-            return json.dumps({"error": f"GAQL sorgu hatası: {str(e)}"})
+                return json.dumps({
+                    "query": query,
+                    "original_question": original_query if original_query != query else None,
+                    "row_count": len(rows),
+                    "rows": rows,
+                }, ensure_ascii=False, default=str)
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"GAQL attempt {attempt + 1} failed: {e}")
+
+                # On first failure with auto-generated query, try regenerating
+                if attempt == 0 and original_query != query:
+                    retry_query = await self._generate_gaql_query(
+                        f"{original_query}\n\nÖnceki sorgu hata verdi: {query}\nHata: {last_error}\nDüzeltilmiş sorgu yaz."
+                    )
+                    if retry_query and retry_query.strip().upper().startswith("SELECT"):
+                        query = retry_query
+                        logger.info(f"Retrying with corrected GAQL: {query[:80]}")
+                        continue
+                break
+
+        return json.dumps({"error": f"GAQL sorgu hatası: {last_error}"})
 
     # ===========================================
     # HELPERS
