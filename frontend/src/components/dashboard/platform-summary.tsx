@@ -30,7 +30,7 @@ export function PlatformSummary({ data }: PlatformSummaryProps) {
     }));
 
     return (
-        <Card className="bg-white border-primary-light">
+        <Card className="bg-white  border-primary-light ">
             <CardHeader>
                 <CardTitle className="text-lg">Platform Dağılımı</CardTitle>
             </CardHeader>

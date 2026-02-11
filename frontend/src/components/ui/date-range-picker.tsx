@@ -109,11 +109,11 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
                                 disabled={isFuture}
                                 className={`
                                     w-8 h-8 text-sm rounded-md transition-colors
-                                    ${!isCurrentMonth ? "text-gray-300" : ""}
+                                    ${!isCurrentMonth ? "text-gray-300 " : ""}
                                     ${isSelected ? "bg-primary text-white font-medium" : ""}
                                     ${isInRange ? "bg-primary/20" : ""}
                                     ${isToday && !isSelected ? "border border-primary" : ""}
-                                    ${isFuture ? "text-gray-300 cursor-not-allowed" : "hover:bg-gray-100"}
+                                    ${isFuture ? "text-gray-300  cursor-not-allowed" : "hover:bg-gray-100 "}
                                     ${!isSelected && !isInRange && isCurrentMonth && !isFuture ? "text-foreground" : ""}
                                 `}
                             >
@@ -131,7 +131,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
             {/* Trigger Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 bg-white border border-primary-light rounded-lg px-4 py-2 text-sm font-medium min-w-[240px] focus:outline-none focus:ring-2 focus:ring-primary shadow-sm hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-2 bg-white  border border-primary-light  rounded-lg px-4 py-2 text-sm font-medium min-w-[240px] focus:outline-none focus:ring-2 focus:ring-primary shadow-sm hover:bg-gray-50  transition-colors"
             >
                 <Calendar size={16} className="text-muted-foreground" />
                 <span>
@@ -141,15 +141,15 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
 
             {/* Dropdown */}
             {isOpen && (
-                <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg z-50 flex">
+                <div className="absolute right-0 top-full mt-2 bg-white  border border-gray-200  rounded-xl shadow-lg z-50 flex">
                     {/* Presets */}
-                    <div className="border-r border-gray-200 p-2 min-w-[140px]">
+                    <div className="border-r border-gray-200  p-2 min-w-[140px]">
                         <div className="text-xs text-muted-foreground font-medium px-2 py-1 mb-1">Hızlı Seçim</div>
                         {PRESETS.map((preset) => (
                             <button
                                 key={preset.label}
                                 onClick={() => handlePresetClick(preset)}
-                                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100 transition-colors"
+                                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100  transition-colors"
                             >
                                 {preset.label}
                             </button>
@@ -158,17 +158,17 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
 
                     {/* Calendars */}
                     <div>
-                        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 ">
                             <button
                                 onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                                className="p-1 hover:bg-gray-100 rounded-md transition-colors"
+                                className="p-1 hover:bg-gray-100  rounded-md transition-colors"
                             >
                                 <ChevronLeft size={18} />
                             </button>
                             <span className="text-sm font-medium">Tarih Seçimi</span>
                             <button
                                 onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                                className="p-1 hover:bg-gray-100 rounded-md transition-colors"
+                                className="p-1 hover:bg-gray-100  rounded-md transition-colors"
                             >
                                 <ChevronRight size={18} />
                             </button>
@@ -177,7 +177,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
                             {renderCalendar(subMonths(currentMonth, 1))}
                             {renderCalendar(currentMonth)}
                         </div>
-                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200  bg-gray-50  rounded-b-xl">
                             <div className="text-sm text-muted-foreground">
                                 {tempStart && tempEnd ? (
                                     <span>
@@ -192,7 +192,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setIsOpen(false)}
-                                    className="px-3 py-1.5 text-sm rounded-md hover:bg-gray-200 transition-colors"
+                                    className="px-3 py-1.5 text-sm rounded-md hover:bg-gray-200  transition-colors"
                                 >
                                     İptal
                                 </button>

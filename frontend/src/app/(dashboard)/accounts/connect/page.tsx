@@ -97,7 +97,7 @@ export default function ConnectAccountPage() {
                     {platforms.map((p) => (
                         <Card
                             key={p.id}
-                            className="bg-white border-primary-light hover:shadow-lg transition-shadow"
+                            className="bg-white  border-primary-light  hover:shadow-lg transition-shadow"
                         >
                             <CardHeader>
                                 <div className="flex items-center gap-4">
@@ -115,7 +115,7 @@ export default function ConnectAccountPage() {
                                         {p.features.map((feature) => (
                                             <span
                                                 key={feature}
-                                                className="text-xs bg-cream px-2 py-1 rounded-full"
+                                                className="text-xs bg-cream  px-2 py-1 rounded-full"
                                             >
                                                 {feature}
                                             </span>
@@ -141,7 +141,7 @@ export default function ConnectAccountPage() {
 
                 {/* Info */}
                 <div className="max-w-4xl">
-                    <Card className="bg-cream border-primary-light">
+                    <Card className="bg-cream  border-primary-light ">
                         <CardContent className="py-4">
                             <p className="text-sm text-muted-foreground">
                                 ⓘ Hesaplarınızı bağladığınızda, yalnızca okuma izinleri istenir.

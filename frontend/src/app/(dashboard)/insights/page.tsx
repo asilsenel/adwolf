@@ -33,10 +33,10 @@ const severityConfig: Record<InsightSeverity, {
     label: string;
     badge: "destructive" | "warning" | "default" | "secondary";
 }> = {
-    critical: { color: "border-l-red-500 bg-red-50", icon: AlertTriangle, iconColor: "text-red-500", label: "Kritik", badge: "destructive" },
-    high: { color: "border-l-amber-500 bg-amber-50", icon: AlertTriangle, iconColor: "text-amber-500", label: "Yuksek", badge: "warning" },
-    medium: { color: "border-l-blue-500 bg-blue-50", icon: TrendingUp, iconColor: "text-blue-500", label: "Orta", badge: "default" },
-    low: { color: "border-l-gray-400 bg-gray-50", icon: Clock, iconColor: "text-gray-400", label: "Dusuk", badge: "secondary" },
+    critical: { color: "border-l-red-500 bg-red-50 ", icon: AlertTriangle, iconColor: "text-red-500", label: "Kritik", badge: "destructive" },
+    high: { color: "border-l-amber-500 bg-amber-50 ", icon: AlertTriangle, iconColor: "text-amber-500", label: "Yuksek", badge: "warning" },
+    medium: { color: "border-l-blue-500 bg-blue-50 ", icon: TrendingUp, iconColor: "text-blue-500", label: "Orta", badge: "default" },
+    low: { color: "border-l-gray-400 bg-gray-50 ", icon: Clock, iconColor: "text-gray-400", label: "Dusuk", badge: "secondary" },
 };
 
 const insightTypeConfig: Record<string, { icon: typeof Lightbulb; label: string }> = {
@@ -204,10 +204,10 @@ export default function InsightsPage() {
 
                 {/* Error Banner */}
                 {error && (
-                    <Card className="border-red-200 bg-red-50">
+                    <Card className="border-red-200  bg-red-50 ">
                         <CardContent className="py-3">
                             <div className="flex items-center justify-between">
-                                <p className="text-sm text-red-700">{error}</p>
+                                <p className="text-sm text-red-700 ">{error}</p>
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -289,7 +289,7 @@ export default function InsightsPage() {
                             return (
                                 <Card
                                     key={insight.id}
-                                    className={`bg-white border-l-4 ${sConfig.color} hover:shadow-md transition-shadow cursor-pointer`}
+                                    className={`bg-white  border-l-4 ${sConfig.color} hover:shadow-md transition-shadow cursor-pointer`}
                                     onClick={() => {
                                         setExpandedId(isExpanded ? null : insight.id);
                                         if (!insight.is_read) {
@@ -328,7 +328,7 @@ export default function InsightsPage() {
 
                                                 {/* Expanded: Detailed Analysis */}
                                                 {isExpanded && insight.detailed_analysis && (
-                                                    <div className="mt-3 p-3 bg-white/80 rounded-lg border text-sm text-foreground">
+                                                    <div className="mt-3 p-3 bg-white/80  rounded-lg border text-sm text-foreground">
                                                         <p className="whitespace-pre-wrap">{insight.detailed_analysis}</p>
                                                     </div>
                                                 )}
@@ -371,7 +371,7 @@ export default function InsightsPage() {
                                                 {isExpanded && insight.recommended_actions && insight.recommended_actions.length > 0 && (
                                                     <div className="mt-3 space-y-2">
                                                         {insight.recommended_actions.map((action) => (
-                                                            <div key={action.id} className="p-3 bg-white/80 rounded-lg border text-sm">
+                                                            <div key={action.id} className="p-3 bg-white/80  rounded-lg border text-sm">
                                                                 <div className="flex items-center gap-2 mb-1">
                                                                     <Zap size={14} className="text-amber-500" />
                                                                     <span className="font-medium">{action.title}</span>

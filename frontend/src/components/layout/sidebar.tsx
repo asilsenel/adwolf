@@ -12,7 +12,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Target,
-    MessageSquare
+    MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,33 +35,24 @@ export function Sidebar() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
 
-    // Hydrate auth state to get user info
     useEffect(() => {
         hydrate();
     }, [hydrate]);
 
     const handleLogout = () => {
-        // Clear all auth data
         localStorage.removeItem("access_token");
         localStorage.removeItem("user");
         localStorage.removeItem("token");
-        // Redirect to login
         router.push("/login");
     };
 
-    // Get user initials for avatar
     const getUserInitial = () => {
-        if (user?.email) {
-            return user.email.charAt(0).toUpperCase();
-        }
+        if (user?.email) return user.email.charAt(0).toUpperCase();
         return "U";
     };
 
-    // Get display name (email username)
     const getDisplayName = () => {
-        if (user?.email) {
-            return user.email.split("@")[0];
-        }
+        if (user?.email) return user.email.split("@")[0];
         return "Kullanıcı";
     };
 
@@ -88,13 +79,13 @@ export function Sidebar() {
             {/* Sidebar */}
             <aside
                 className={cn(
-                    "fixed inset-y-0 left-0 z-40 bg-white border-r border-primary-light transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static flex flex-col",
+                    "fixed inset-y-0 left-0 z-40 bg-white  border-r border-primary-light  transform transition-all duration-200 ease-in-out lg:translate-x-0 lg:static flex flex-col",
                     isMobileOpen ? "translate-x-0" : "-translate-x-full",
                     isCollapsed ? "w-20" : "w-64"
                 )}
             >
                 {/* Logo & Collapse Toggle */}
-                <div className="p-4 border-b border-primary-light flex items-center justify-between">
+                <div className="p-4 border-b border-primary-light  flex items-center justify-between">
                     <Link href="/dashboard" className={cn("flex items-center gap-2", isCollapsed && "justify-center")}>
                         <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
                             <span className="text-white font-bold text-xl">A</span>
@@ -104,11 +95,10 @@ export function Sidebar() {
                         )}
                     </Link>
 
-                    {/* Collapse button - only on desktop */}
                     <Button
                         variant="ghost"
                         size="icon"
-                        className={cn("hidden lg:flex h-8 w-8", isCollapsed && "absolute -right-3 top-6 bg-white border border-primary-light rounded-full shadow-sm")}
+                        className={cn("hidden lg:flex h-8 w-8", isCollapsed && "absolute -right-3 top-6 bg-white  border border-primary-light  rounded-full shadow-sm")}
                         onClick={() => setIsCollapsed(!isCollapsed)}
                     >
                         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -129,8 +119,8 @@ export function Sidebar() {
                                     "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium",
                                     isCollapsed && "justify-center px-2",
                                     isActive
-                                        ? "bg-primary text-white"
-                                        : "text-foreground hover:bg-cream"
+                                        ? "bg-primary-light/30  text-foreground ring-1 ring-primary/40"
+                                        : "text-foreground hover:bg-cream "
                                 )}
                             >
                                 <item.icon size={20} className="flex-shrink-0" />
@@ -140,14 +130,14 @@ export function Sidebar() {
                     })}
                 </nav>
 
-                {/* User section */}
-                <div className="p-4 border-t border-primary-light">
+                {/* User */}
+                <div className="p-4 border-t border-primary-light space-y-3">
                     <div className={cn(
                         "flex items-center gap-3 px-2 py-2",
                         isCollapsed && "flex-col gap-2"
                     )}>
-                        <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
-                            <span className="text-primary font-semibold">{getUserInitial()}</span>
+                        <div className="w-10 h-10 rounded-full bg-primary-light  flex items-center justify-center flex-shrink-0">
+                            <span className="text-primary  font-semibold">{getUserInitial()}</span>
                         </div>
                         {!isCollapsed && (
                             <>

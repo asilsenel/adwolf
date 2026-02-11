@@ -18,7 +18,7 @@ export default function SettingsPage() {
 
             <div className="p-6 space-y-6 max-w-4xl">
                 {/* Profile */}
-                <Card className="bg-white border-primary-light">
+                <Card className="bg-white border-primary-light  ">
                     <CardHeader>
                         <div className="flex items-center gap-2">
                             <User size={20} className="text-primary" />
@@ -46,7 +46,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* Notifications */}
-                <Card className="bg-white border-primary-light">
+                <Card className="bg-white border-primary-light  ">
                     <CardHeader>
                         <div className="flex items-center gap-2">
                             <Bell size={20} className="text-primary" />
@@ -65,7 +65,7 @@ export default function SettingsPage() {
                             </div>
                             <Button variant="outline" size="sm">Açık</Button>
                         </div>
-                        <div className="flex items-center justify-between py-2 border-t border-primary-light">
+                        <div className="flex items-center justify-between py-2 border-t border-primary-light ">
                             <div className="flex items-center gap-3">
                                 <Smartphone size={18} className="text-muted-foreground" />
                                 <div>
@@ -79,7 +79,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* Subscription */}
-                <Card className="bg-white border-primary-light">
+                <Card className="bg-white border-primary-light  ">
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -91,7 +91,7 @@ export default function SettingsPage() {
                         <CardDescription>Mevcut plan ve ödeme bilgileri</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="p-4 bg-cream rounded-lg">
+                        <div className="p-4 bg-cream  rounded-lg">
                             <div className="flex items-center justify-between mb-2">
                                 <h4 className="font-semibold">Pro Plan</h4>
                                 <span className="text-lg font-bold text-primary">₺499/ay</span>
@@ -111,7 +111,7 @@ export default function SettingsPage() {
                 </Card>
 
                 {/* Security */}
-                <Card className="bg-white border-primary-light">
+                <Card className="bg-white border-primary-light  ">
                     <CardHeader>
                         <div className="flex items-center gap-2">
                             <Shield size={20} className="text-primary" />
@@ -121,7 +121,7 @@ export default function SettingsPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <Button variant="outline">Şifreyi Değiştir</Button>
-                        <div className="pt-4 border-t border-primary-light">
+                        <div className="pt-4 border-t border-primary-light ">
                             <Button variant="destructive">Hesabı Sil</Button>
                             <p className="text-xs text-muted-foreground mt-2">
                                 Bu işlem geri alınamaz. Tüm verileriniz silinecektir.

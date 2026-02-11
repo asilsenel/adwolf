@@ -159,7 +159,7 @@ export default function AccountsPage() {
                         {accounts.map((account) => (
                             <Card
                                 key={account.id}
-                                className="bg-white border-primary-light hover:shadow-md transition-shadow"
+                                className="bg-white  border-primary-light  hover:shadow-md transition-shadow"
                             >
                                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                                     <div className="flex items-center gap-3">
@@ -206,7 +206,7 @@ export default function AccountsPage() {
                                     </div>
 
                                     {/* Actions */}
-                                    <div className="flex gap-2 pt-4 border-t border-primary-light">
+                                    <div className="flex gap-2 pt-4 border-t border-primary-light ">
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -232,9 +232,9 @@ export default function AccountsPage() {
 
                 {/* Empty State */}
                 {accounts.length === 0 && (
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white  border-primary-light ">
                         <CardContent className="py-12 text-center">
-                            <div className="w-16 h-16 rounded-full bg-cream mx-auto mb-4 flex items-center justify-center">
+                            <div className="w-16 h-16 rounded-full bg-cream  mx-auto mb-4 flex items-center justify-center">
                                 <Plus size={32} className="text-primary" />
                             </div>
                             <h3 className="text-lg font-semibold mb-2">Henüz hesap bağlanmadı</h3>

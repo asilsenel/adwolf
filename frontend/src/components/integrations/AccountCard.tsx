@@ -35,7 +35,7 @@ export function AccountCard({ account, onSync }: AccountCardProps) {
     };
 
     return (
-        <Card className="bg-white border-primary-light hover:shadow-md transition-shadow">
+        <Card className="bg-white  border-primary-light  hover:shadow-md transition-shadow">
             <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -56,7 +56,7 @@ export function AccountCard({ account, onSync }: AccountCardProps) {
                     </Badge>
                 </div>
 
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-primary-light">
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-primary-light ">
                     <span className="text-xs text-muted-foreground">
                         Son sync: {formatDate(account.last_sync_at)}
                     </span>

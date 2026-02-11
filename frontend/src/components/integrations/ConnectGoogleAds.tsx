@@ -47,7 +47,7 @@ export function ConnectGoogleAds({ variant = "large", onSuccess }: ConnectGoogle
 
     // Large variant - Call to action card
     return (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-primary-light shadow-sm">
+        <div className="flex flex-col items-center justify-center p-12 bg-white  rounded-xl border border-primary-light  shadow-sm">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 via-red-500 to-yellow-500 flex items-center justify-center mb-6">
                 <Chrome size={40} className="text-white" />
             </div>

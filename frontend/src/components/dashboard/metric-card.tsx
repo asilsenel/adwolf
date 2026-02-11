@@ -47,7 +47,7 @@ export function MetricCard({
 
     return (
         <Card className={cn(
-            "bg-white border-primary-light hover:shadow-md transition-shadow",
+            "bg-white  border-primary-light  hover:shadow-md transition-shadow",
             className
         )}>
             <CardContent className="p-6">

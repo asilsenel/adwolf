@@ -272,10 +272,10 @@ export default function CampaignsPage() {
             <div className="p-6 space-y-6">
                 {/* Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white border-primary-light  ">
                         <CardContent className="p-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-lg bg-blue-100  flex items-center justify-center">
                                     <Building2 size={20} className="text-blue-600" />
                                 </div>
                                 <div>
@@ -285,10 +285,10 @@ export default function CampaignsPage() {
                             </div>
                         </CardContent>
                     </Card>
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white border-primary-light  ">
                         <CardContent className="p-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-lg bg-purple-100  flex items-center justify-center">
                                     <Target size={20} className="text-purple-600" />
                                 </div>
                                 <div>
@@ -298,10 +298,10 @@ export default function CampaignsPage() {
                             </div>
                         </CardContent>
                     </Card>
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white border-primary-light  ">
                         <CardContent className="p-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-lg bg-green-100  flex items-center justify-center">
                                     <TrendingUp size={20} className="text-green-600" />
                                 </div>
                                 <div>
@@ -324,7 +324,7 @@ export default function CampaignsPage() {
                                 placeholder="Hesap ara..."
                                 value={accountSearchQuery}
                                 onChange={(e) => setAccountSearchQuery(e.target.value)}
-                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary   "
                             />
                         </div>
                         {/* Campaign Search */}
@@ -335,14 +335,14 @@ export default function CampaignsPage() {
                                 placeholder="Kampanya ara..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-primary"
+                                className="pl-9 pr-4 py-2 border border-primary-light rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-primary   "
                             />
                         </div>
                         {/* Status filter */}
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="px-4 py-2 border border-primary-light rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="px-4 py-2 border border-primary-light rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary   "
                         >
                             <option value="all">Tüm Durumlar</option>
                             <option value="enabled">Aktif</option>
@@ -350,23 +350,48 @@ export default function CampaignsPage() {
                             <option value="removed">Silindi</option>
                         </select>
                     </div>
-                    <Button
-                        onClick={handleSyncAll}
-                        disabled={isSyncingAll}
-                        className="bg-primary hover:bg-primary-dark text-white"
-                    >
-                        {isSyncingAll ? (
-                            <>
-                                <Loader2 size={16} className="animate-spin mr-2" />
-                                Senkronize Ediliyor...
-                            </>
-                        ) : (
-                            <>
-                                <RefreshCw size={16} className="mr-2" />
-                                Tümünü Senkronize Et
-                            </>
-                        )}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                const allExpanded = accountsWithCampaigns.every(a => a.isExpanded);
+                                setAccountsWithCampaigns(prev =>
+                                    prev.map(acc => ({ ...acc, isExpanded: !allExpanded }))
+                                );
+                            }}
+                            className="border-primary-light"
+                        >
+                            {accountsWithCampaigns.every(a => a.isExpanded) ? (
+                                <>
+                                    <ChevronRight size={16} className="mr-2" />
+                                    Tümünü Gizle
+                                </>
+                            ) : (
+                                <>
+                                    <ChevronDown size={16} className="mr-2" />
+                                    Tümünü Göster
+                                </>
+                            )}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleSyncAll}
+                            disabled={isSyncingAll}
+                            className="border-primary-light"
+                        >
+                            {isSyncingAll ? (
+                                <>
+                                    <Loader2 size={16} className="animate-spin mr-2" />
+                                    Senkronize Ediliyor...
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw size={16} className="mr-2" />
+                                    Tümünü Senkronize Et
+                                </>
+                            )}
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Accounts with Campaigns Tree */}
@@ -381,14 +406,14 @@ export default function CampaignsPage() {
                         }
 
                         return (
-                            <Card key={account.id} className="bg-white border-primary-light overflow-hidden">
+                            <Card key={account.id} className="bg-white border-primary-light   overflow-hidden">
                                 {/* Account Header */}
                                 <div
-                                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50  transition-colors"
                                     onClick={() => toggleAccount(account.id)}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <button className="p-1 hover:bg-gray-200 rounded transition-colors">
+                                        <button className="p-1 hover:bg-gray-200  rounded transition-colors">
                                             {account.isExpanded ? (
                                                 <ChevronDown size={20} className="text-muted-foreground" />
                                             ) : (
@@ -421,7 +446,7 @@ export default function CampaignsPage() {
 
                                 {/* Campaigns List */}
                                 {account.isExpanded && (
-                                    <div className="border-t border-primary-light bg-gray-50">
+                                    <div className="border-t border-primary-light  bg-gray-50 ">
                                         {account.isLoading ? (
                                             <div className="flex items-center justify-center py-8">
                                                 <Loader2 size={24} className="animate-spin text-muted-foreground" />
@@ -440,11 +465,11 @@ export default function CampaignsPage() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="divide-y divide-primary-light">
+                                            <div className="divide-y divide-primary-light ">
                                                 {filteredCampaigns.map((campaign) => (
                                                     <div
                                                         key={campaign.id}
-                                                        className="flex items-center justify-between px-4 py-3 pl-14 hover:bg-gray-100 transition-colors cursor-pointer"
+                                                        className="flex items-center justify-between px-4 py-3 pl-14 hover:bg-gray-100  transition-colors cursor-pointer"
                                                         onClick={() => openCampaignDetails(campaign, accountName)}
                                                     >
                                                         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -483,7 +508,7 @@ export default function CampaignsPage() {
 
                 {/* Empty state */}
                 {accountsWithCampaigns.length === 0 && (
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white border-primary-light  ">
                         <CardContent className="py-12 text-center">
                             <Target size={48} className="mx-auto text-muted-foreground mb-4" />
                             <h3 className="text-lg font-semibold mb-2">Henüz Hesap Yok</h3>
@@ -504,13 +529,13 @@ export default function CampaignsPage() {
                         onClick={closeCampaignDetails}
                     />
                     {/* Sidebar */}
-                    <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 overflow-y-auto">
+                    <div className="fixed right-0 top-0 h-full w-96 bg-white  shadow-xl z-50 overflow-y-auto">
                         {/* Header */}
-                        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+                        <div className="sticky top-0 bg-white  border-b border-gray-200  p-4 flex items-center justify-between">
                             <h2 className="text-lg font-semibold">Kampanya Detayları</h2>
                             <button
                                 onClick={closeCampaignDetails}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-gray-100  rounded-lg transition-colors"
                             >
                                 <X size={20} />
                             </button>
@@ -539,7 +564,7 @@ export default function CampaignsPage() {
                             {/* Details Grid */}
                             <div className="space-y-4">
                                 {/* Campaign Type */}
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                     <Tag size={18} className="text-muted-foreground" />
                                     <div>
                                         <p className="text-xs text-muted-foreground">Kampanya Türü</p>
@@ -548,7 +573,7 @@ export default function CampaignsPage() {
                                 </div>
 
                                 {/* Daily Budget */}
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                     <DollarSign size={18} className="text-muted-foreground" />
                                     <div>
                                         <p className="text-xs text-muted-foreground">Günlük Bütçe</p>
@@ -557,7 +582,7 @@ export default function CampaignsPage() {
                                 </div>
 
                                 {/* Platform Campaign ID */}
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                     <Info size={18} className="text-muted-foreground" />
                                     <div>
                                         <p className="text-xs text-muted-foreground">Platform Kampanya ID</p>
@@ -567,7 +592,7 @@ export default function CampaignsPage() {
 
                                 {/* Start Date */}
                                 {selectedCampaign.start_date && (
-                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                         <Calendar size={18} className="text-muted-foreground" />
                                         <div>
                                             <p className="text-xs text-muted-foreground">Başlangıç Tarihi</p>
@@ -578,7 +603,7 @@ export default function CampaignsPage() {
 
                                 {/* End Date */}
                                 {selectedCampaign.end_date && (
-                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                         <Calendar size={18} className="text-muted-foreground" />
                                         <div>
                                             <p className="text-xs text-muted-foreground">Bitiş Tarihi</p>
@@ -589,7 +614,7 @@ export default function CampaignsPage() {
 
                                 {/* Created At */}
                                 {selectedCampaign.created_at && (
-                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50  rounded-lg">
                                         <Calendar size={18} className="text-muted-foreground" />
                                         <div>
                                             <p className="text-xs text-muted-foreground">Oluşturulma Tarihi</p>
@@ -600,8 +625,8 @@ export default function CampaignsPage() {
                             </div>
 
                             {/* Note */}
-                            <div className="p-4 bg-blue-50 rounded-lg">
-                                <p className="text-sm text-blue-700">
+                            <div className="p-4 bg-blue-50  rounded-lg">
+                                <p className="text-sm text-blue-700 ">
                                     <strong>Not:</strong> Bu kampanya Google Ads hesabınızdan senkronize edilmiştir.
                                     Kampanya ayarlarını değiştirmek için Google Ads panelini kullanın.
                                 </p>

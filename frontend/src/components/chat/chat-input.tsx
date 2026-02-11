@@ -52,7 +52,7 @@ export function ChatInput({
     };
 
     return (
-        <div className="border-t bg-white p-4">
+        <div className="border-t bg-white   p-4">
             <div className="flex items-end gap-2 max-w-4xl mx-auto">
                 <Textarea
                     ref={textareaRef}
@@ -61,7 +61,7 @@ export function ChatInput({
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
                     disabled={isLoading || disabled}
-                    className="min-h-[44px] max-h-[200px] py-3 pr-4 resize-none rounded-xl border-gray-200 focus:border-primary"
+                    className="min-h-[44px] max-h-[200px] py-3 pr-4 resize-none rounded-xl border-gray-200 focus:border-primary  "
                     rows={1}
                 />
                 <Button

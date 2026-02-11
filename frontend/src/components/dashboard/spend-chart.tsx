@@ -23,7 +23,7 @@ interface SpendChartProps {
 
 export function SpendChart({ data }: SpendChartProps) {
     return (
-        <Card className="bg-white border-primary-light">
+        <Card className="bg-white  border-primary-light ">
             <CardHeader>
                 <CardTitle className="text-lg">Harcama Trendi</CardTitle>
             </CardHeader>
@@ -31,23 +31,24 @@ export function SpendChart({ data }: SpendChartProps) {
                 <div className="h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#AAC4F5" />
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                             <XAxis
                                 dataKey="date"
-                                stroke="#64748b"
+                                stroke="var(--muted-foreground)"
                                 fontSize={12}
                                 tickLine={false}
                             />
                             <YAxis
-                                stroke="#64748b"
+                                stroke="var(--muted-foreground)"
                                 fontSize={12}
                                 tickLine={false}
                                 tickFormatter={(value) => `₺${(value / 1000).toFixed(0)}k`}
                             />
                             <Tooltip
                                 contentStyle={{
-                                    backgroundColor: "white",
-                                    border: "1px solid #AAC4F5",
+                                    backgroundColor: "var(--card)",
+                                    color: "var(--card-foreground)",
+                                    border: "1px solid var(--border)",
                                     borderRadius: "8px",
                                 }}
                                 formatter={(value) => [

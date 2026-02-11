@@ -18,7 +18,7 @@ interface ChatMessageProps {
  */
 const markdownComponents: Components = {
     table: ({ children, ...props }) => (
-        <div className="my-2 overflow-x-auto rounded-lg border border-gray-200">
+        <div className="my-2 overflow-x-auto rounded-lg border border-gray-200 ">
             <table
                 className="w-full text-xs border-collapse"
                 {...props}
@@ -28,23 +28,23 @@ const markdownComponents: Components = {
         </div>
     ),
     thead: ({ children, ...props }) => (
-        <thead className="bg-gray-50 border-b border-gray-200" {...props}>
+        <thead className="bg-gray-50  border-b border-gray-200 " {...props}>
             {children}
         </thead>
     ),
     tbody: ({ children, ...props }) => (
-        <tbody className="divide-y divide-gray-100" {...props}>
+        <tbody className="divide-y divide-gray-100 " {...props}>
             {children}
         </tbody>
     ),
     tr: ({ children, ...props }) => (
-        <tr className="hover:bg-gray-50/50 transition-colors" {...props}>
+        <tr className="hover:bg-gray-50/50  transition-colors" {...props}>
             {children}
         </tr>
     ),
     th: ({ children, ...props }) => (
         <th
-            className="px-3 py-2 text-left text-xs font-semibold text-gray-600 whitespace-nowrap"
+            className="px-3 py-2 text-left text-xs font-semibold text-gray-600  whitespace-nowrap"
             {...props}
         >
             {children}
@@ -52,7 +52,7 @@ const markdownComponents: Components = {
     ),
     td: ({ children, ...props }) => (
         <td
-            className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap"
+            className="px-3 py-1.5 text-xs text-gray-700  whitespace-nowrap"
             {...props}
         >
             {children}
@@ -97,7 +97,7 @@ const markdownComponents: Components = {
         }
         return (
             <code
-                className="px-1 py-0.5 bg-gray-200 text-gray-800 rounded text-xs font-mono"
+                className="px-1 py-0.5 bg-gray-200  text-gray-800  rounded text-xs font-mono"
                 {...props}
             >
                 {children}
@@ -115,7 +115,7 @@ const markdownComponents: Components = {
     // Blockquote
     blockquote: ({ children, ...props }) => (
         <blockquote
-            className="my-2 pl-3 border-l-2 border-gray-300 text-gray-600 italic"
+            className="my-2 pl-3 border-l-2 border-gray-300  text-gray-600  italic"
             {...props}
         >
             {children}
@@ -123,7 +123,7 @@ const markdownComponents: Components = {
     ),
     // Horizontal rule
     hr: ({ ...props }) => (
-        <hr className="my-2 border-gray-200" {...props} />
+        <hr className="my-2 border-gray-200 " {...props} />
     ),
     // Links
     a: ({ children, ...props }) => (
@@ -161,7 +161,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
                     "max-w-[80%] rounded-2xl px-4 py-2.5",
                     isUser
                         ? "bg-primary-light/40 text-foreground rounded-tr-sm"
-                        : "bg-gray-100 text-foreground rounded-tl-sm"
+                        : "bg-gray-100  text-foreground rounded-tl-sm"
                 )}
             >
                 {/* Tool calls indicator */}
@@ -223,7 +223,7 @@ export function ToolCallIndicator({ toolName }: ToolCallIndicatorProps) {
 
     return (
         <div className="flex items-center gap-2 px-4 py-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-xs text-amber-700">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50  border border-amber-200  rounded-full text-xs text-amber-700 ">
                 <Wrench size={12} className="animate-spin" />
                 <span>{toolLabels[toolName] || toolName}</span>
             </div>

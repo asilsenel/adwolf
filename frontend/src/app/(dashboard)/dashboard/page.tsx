@@ -259,7 +259,7 @@ export default function DashboardPage() {
 
             <div className="p-6 space-y-6">
                 {/* Connected Accounts Section - Collapsible */}
-                <Card className="bg-white border-primary-light">
+                <Card className="bg-white  border-primary-light ">
                     <CardHeader
                         className="flex flex-row items-center justify-between cursor-pointer"
                         onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
@@ -372,7 +372,7 @@ export default function DashboardPage() {
                     </>
                 ) : (
                     /* No metrics yet - prompt to sync */
-                    <Card className="bg-white border-primary-light">
+                    <Card className="bg-white  border-primary-light ">
                         <CardContent className="py-12 text-center">
                             <AlertCircle size={48} className="mx-auto text-muted-foreground mb-4" />
                             <h3 className="text-lg font-semibold mb-2">Henüz Metrik Verisi Yok</h3>
@@ -404,13 +404,13 @@ export default function DashboardPage() {
                 )}
 
                 {/* Info Card */}
-                <Card className="bg-blue-50 border-blue-200">
+                <Card className="bg-blue-50  border-blue-200 ">
                     <CardContent className="py-4">
                         <div className="flex items-start gap-3">
                             <Sparkles size={20} className="text-blue-600 mt-0.5" />
                             <div>
-                                <h4 className="font-semibold text-blue-900">Gerçek Veri Modu</h4>
-                                <p className="text-sm text-blue-700">
+                                <h4 className="font-semibold text-blue-900 ">Gerçek Veri Modu</h4>
+                                <p className="text-sm text-blue-700 ">
                                     {accounts.length} bağlı hesap bulundu.
                                     {hasMetrics
                                         ? ` ${metrics?.campaigns_count || 0} kampanyadan veriler gösteriliyor.`

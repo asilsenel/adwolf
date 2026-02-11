@@ -40,11 +40,11 @@ export function ThreadList({
 
     return (
         <div className={cn(
-            "flex flex-col h-full bg-gray-50 border-r",
+            "flex flex-col h-full bg-gray-50  border-r ",
             isCollapsed ? "w-0 overflow-hidden" : "w-72"
         )}>
             {/* Header */}
-            <div className="p-3 border-b bg-white">
+            <div className="p-3 border-b bg-white  ">
                 <Button
                     onClick={onNewThread}
                     className="w-full gap-2"
@@ -73,7 +73,7 @@ export function ThreadList({
                                     "group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors",
                                     activeThreadId === thread.id
                                         ? "bg-primary/10 text-primary"
-                                        : "hover:bg-gray-100 text-foreground"
+                                        : "hover:bg-gray-100  text-foreground"
                                 )}
                                 onClick={() => onSelectThread(thread.id)}
                             >

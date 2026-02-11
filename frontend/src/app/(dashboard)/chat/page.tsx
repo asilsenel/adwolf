@@ -258,7 +258,7 @@ export default function ChatPage() {
     }, [activeThreadId, isStreaming]);
 
     return (
-        <div className="flex h-[calc(100vh-2rem)] overflow-hidden rounded-lg border bg-white">
+        <div className="flex h-[calc(100vh-2rem)] overflow-hidden rounded-lg border bg-white  ">
             {/* Thread Sidebar */}
             <ThreadList
                 threads={threads}
@@ -272,7 +272,7 @@ export default function ChatPage() {
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Chat Header */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b bg-white">
+                <div className="flex items-center gap-3 px-4 py-3 border-b bg-white  ">
                     <Button
                         variant="ghost"
                         size="icon"
@@ -287,8 +287,8 @@ export default function ChatPage() {
                     </Button>
 
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                            <Bot size={16} className="text-emerald-700" />
+                        <div className="w-8 h-8 rounded-full bg-emerald-100  flex items-center justify-center">
+                            <Bot size={16} className="text-emerald-700 " />
                         </div>
                         <div>
                             <h2 className="text-sm font-semibold">AI Asistan</h2>
@@ -304,8 +304,8 @@ export default function ChatPage() {
                     {messages.length === 0 && !streamingContent ? (
                         /* Empty State */
                         <div className="flex flex-col items-center justify-center h-full p-8">
-                            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                                <Bot size={32} className="text-emerald-700" />
+                            <div className="w-16 h-16 rounded-full bg-emerald-100  flex items-center justify-center mb-4">
+                                <Bot size={32} className="text-emerald-700 " />
                             </div>
                             <h3 className="text-lg font-semibold mb-2">
                                 AdWolf AI Asistan
@@ -319,7 +319,7 @@ export default function ChatPage() {
                                 {EXAMPLE_QUESTIONS.map((q, idx) => (
                                     <Card
                                         key={idx}
-                                        className="p-3 cursor-pointer hover:bg-gray-50 transition-colors border-gray-200"
+                                        className="p-3 cursor-pointer hover:bg-gray-50  transition-colors border-gray-200 "
                                         onClick={() => handleSendMessage(q.question)}
                                     >
                                         <div className="flex items-start gap-2">
